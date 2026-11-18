@@ -1,0 +1,18 @@
+FROM maven:3.9.11-eclipse-temurin-25 AS build
+WORKDIR /workspace
+COPY pom.xml .
+COPY src ./src
+RUN mvn -B -q -DskipTests package
+
+FROM eclipse-temurin:25-jre
+WORKDIR /app
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --system --uid 10001 appuser
+COPY --from=build /workspace/target/notesphere-api-0.1.0.jar app.jar
+USER appuser
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
+  CMD curl --fail --silent http://127.0.0.1:8080/actuator/health/readiness || exit 1
+ENTRYPOINT ["java","-XX:MaxRAMPercentage=75.0","-jar","/app/app.jar"]

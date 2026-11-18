@@ -1,0 +1,173 @@
+name: notesphere-production
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in Coolify}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in Coolify}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in Coolify}
+      APP_DB_USER: ${APP_DB_USER:?Set APP_DB_USER in Coolify}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?Set APP_DB_PASSWORD in Coolify}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/initialize-postgres-app-role.sh:/docker-entrypoint-initdb.d/10-create-app-role.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - data-private
+    labels:
+      com.notesphere.stack: production
+      com.notesphere.service: postgres
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  minio:
+    image: rustfs/rustfs@sha256:b81d16a90ee25bd9511280127ca1471788c6e874cf0f0da759645f46b2dc1d74
+    command: ["/data"]
+    environment:
+      RUSTFS_ACCESS_KEY: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in Coolify}
+      RUSTFS_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in Coolify}
+      RUSTFS_ADDRESS: ":9000"
+      RUSTFS_CONSOLE_ADDRESS: ":9001"
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_OBS_LOGGER_LEVEL: error
+    volumes:
+      - object-data:/data
+    restart: unless-stopped
+    networks:
+      - data-private
+    labels:
+      com.notesphere.stack: production
+      com.notesphere.service: object-storage
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  minio-init:
+    image: public.ecr.aws/aws-cli/aws-cli@sha256:33a16c53ea442e918b58df67301ad76a8fb57082c39f7e78753b898c3f3e87c2
+    depends_on:
+      minio:
+        condition: service_started
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        until aws --endpoint-url http://minio:9000 s3api list-buckets >/dev/null 2>&1; do
+          sleep 3
+        done
+        if ! aws --endpoint-url http://minio:9000 s3api head-bucket --bucket "$${MINIO_BUCKET}" >/dev/null 2>&1; then
+          aws --endpoint-url http://minio:9000 s3api create-bucket --bucket "$${MINIO_BUCKET}"
+        fi
+    environment:
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in Coolify}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in Coolify}
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_EC2_METADATA_DISABLED: "true"
+      MINIO_BUCKET: ${MINIO_BUCKET:?Set MINIO_BUCKET in Coolify}
+    restart: "no"
+    networks:
+      - data-private
+    labels:
+      com.notesphere.stack: production
+      com.notesphere.service: storage-initializer
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:?Set POSTGRES_DB in Coolify}
+      SPRING_DATASOURCE_USERNAME: ${APP_DB_USER:?Set APP_DB_USER in Coolify}
+      SPRING_DATASOURCE_PASSWORD: ${APP_DB_PASSWORD:?Set APP_DB_PASSWORD in Coolify}
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in Coolify}
+      S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in Coolify}
+      S3_BUCKET: ${MINIO_BUCKET:?Set MINIO_BUCKET in Coolify}
+      APP_MAX_ARCHIVE_SIZE: ${APP_MAX_ARCHIVE_SIZE:-260MB}
+      APP_CORS_ALLOWED_ORIGINS: ${APP_CORS_ALLOWED_ORIGINS:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8080/actuator/health/readiness"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+    restart: unless-stopped
+    stop_grace_period: 35s
+    networks:
+      - data-private
+      - api-private
+    labels:
+      com.notesphere.stack: production
+      com.notesphere.service: backend
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    expose:
+      - "80"
+    networks:
+      - api-private
+      - coolify
+    labels:
+      com.notesphere.stack: production
+      com.notesphere.service: frontend
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  postgres-data:
+    name: notesphere-production-postgres-data
+  object-data:
+    name: notesphere-production-object-data
+
+networks:
+  data-private:
+    name: notesphere-production-data
+    internal: true
+  api-private:
+    name: notesphere-production-api
+    internal: true
+  coolify:
+    name: coolify
+    external: true

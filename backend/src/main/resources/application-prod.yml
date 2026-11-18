@@ -1,0 +1,41 @@
+server:
+  forward-headers-strategy: framework
+  shutdown: graceful
+
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+  servlet:
+    multipart:
+      max-file-size: ${APP_MAX_ARCHIVE_SIZE:260MB}
+      max-request-size: ${APP_MAX_ARCHIVE_SIZE:260MB}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+
+app:
+  archive:
+    max-size: ${APP_MAX_ARCHIVE_SIZE:260MB}
+  cors:
+    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:}
+  s3:
+    endpoint: ${S3_ENDPOINT}
+    access-key: ${S3_ACCESS_KEY}
+    secret-key: ${S3_SECRET_KEY}
+    bucket: ${S3_BUCKET}
