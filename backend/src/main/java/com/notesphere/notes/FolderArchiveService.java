@@ -1,12 +1,9 @@
 package com.notesphere.notes;
 
+import com.notesphere.storage.AttachmentMetadata;
+import com.notesphere.storage.AttachmentService;
+import com.notesphere.storage.StoredAttachment;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.minio.GetObjectArgs;
-import io.minio.MinioClient;
-import io.minio.PutObjectArgs;
-import io.minio.RemoveObjectArgs;
-import io.minio.StatObjectArgs;
-import io.minio.StatObjectResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -17,7 +14,6 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
@@ -56,24 +52,21 @@ public class FolderArchiveService {
 
   private final FolderRepository folders;
   private final NoteRepository notes;
-  private final MinioClient storage;
+  private final AttachmentService attachments;
   private final ObjectMapper objectMapper;
-  private final String bucket;
   private final long maxArchiveBytes;
 
   public FolderArchiveService(
     FolderRepository folders,
     NoteRepository notes,
-    MinioClient storage,
+    AttachmentService attachments,
     ObjectMapper objectMapper,
-    @Value("${app.s3.bucket}") String bucket,
     @Value("${app.archive.max-size:260MB}") org.springframework.util.unit.DataSize maxArchiveSize
   ) {
     this.folders = folders;
     this.notes = notes;
-    this.storage = storage;
+    this.attachments = attachments;
     this.objectMapper = objectMapper;
-    this.bucket = bucket;
     this.maxArchiveBytes = maxArchiveSize.toBytes();
   }
 
@@ -196,14 +189,11 @@ public class FolderArchiveService {
 
       for (ArchiveAttachment attachment : archive.attachments()) {
         zip.putNextEntry(new ZipEntry(attachment.archivePath()));
-        try (InputStream input = storage.getObject(GetObjectArgs.builder()
-          .bucket(bucket)
-          .object(attachment.objectKey())
-          .build())) {
-          input.transferTo(zip);
-        } catch (Exception exception) {
-          throw new IOException("Could not export attachment " + attachment.fileName(), exception);
-        }
+          try {
+            zip.write(attachments.read(UUID.fromString(attachment.id())));
+          } catch (RuntimeException exception) {
+            throw new IOException("Could not export attachment " + attachment.fileName(), exception);
+          }
         zip.closeEntry();
       }
       zip.finish();
@@ -276,27 +266,22 @@ public class FolderArchiveService {
     if (strategy == ImportStrategy.OVERRIDE && existingRoot == null) {
       throw new ResponseStatusException(HttpStatus.CONFLICT, "The folder to override no longer exists. Preview the archive again.");
     }
-    List<UploadedObject> uploadedObjects = new ArrayList<>();
-    try {
-      Map<String, AttachmentReference> importedAttachments = uploadAttachments(archive, manifest, uploadedObjects);
-      if (strategy == ImportStrategy.OVERRIDE) clearFolderContents(existingRoot);
-      Map<UUID, Folder> importedFolders = createFolders(
-        manifest,
-        strategy == ImportStrategy.OVERRIDE ? existingRoot : null
-      );
-      List<Note> importedNotes = createNotes(manifest, importedFolders, importedAttachments);
-      Folder root = importedFolders.get(manifest.rootFolderId());
-      return new ArchiveImportResult(
-        root.getId(),
-        root.getName(),
-        importedFolders.size(),
-        importedNotes.size(),
-        uploadedObjects.size()
-      );
-    } catch (RuntimeException exception) {
-      removeUploadedObjects(uploadedObjects, exception);
-      throw exception;
-    }
+    List<StoredAttachment> importedFiles = new ArrayList<>();
+    Map<String, AttachmentReference> importedAttachments = uploadAttachments(archive, manifest, importedFiles);
+    if (strategy == ImportStrategy.OVERRIDE) clearFolderContents(existingRoot);
+    Map<UUID, Folder> importedFolders = createFolders(
+      manifest,
+      strategy == ImportStrategy.OVERRIDE ? existingRoot : null
+    );
+    List<Note> importedNotes = createNotes(manifest, importedFolders, importedAttachments);
+    Folder root = importedFolders.get(manifest.rootFolderId());
+    return new ArchiveImportResult(
+      root.getId(),
+      root.getName(),
+      importedFolders.size(),
+      importedNotes.size(),
+      importedFiles.size()
+    );
   }
 
   @Transactional
@@ -310,61 +295,52 @@ public class FolderArchiveService {
       throw new ResponseStatusException(HttpStatus.CONFLICT, "The note to override no longer exists. Preview the archive again.");
     }
 
-    List<UploadedObject> uploadedObjects = new ArrayList<>();
-    try {
-      Map<String, AttachmentReference> importedAttachments = uploadAttachments(archive, manifest, uploadedObjects);
-      Note target = strategy == ImportStrategy.OVERRIDE ? duplicate : new Note();
-      String title = strategy == ImportStrategy.COPY && duplicate != null
-        ? uniqueNoteTitle(source.title(), destination == null ? null : destination.getId())
-        : source.title();
-      target.setTitle(title);
-      target.setContent(rewriteAttachmentUrls(source.content(), importedAttachments));
-      target.setFolder(destination);
-      target.setNoteType(source.noteType());
-      target.setFavorite(source.favorite());
-      target.setPinned(source.pinned());
-      target.setArchived(source.archived());
-      target.restoreTimestamps(source.createdAt(), source.updatedAt());
-      Note saved = notes.save(target);
-      return new NoteImportResult(saved.getId(), saved.getTitle(), duplicate != null && strategy == ImportStrategy.OVERRIDE, uploadedObjects.size());
-    } catch (RuntimeException exception) {
-      removeUploadedObjects(uploadedObjects, exception);
-      throw exception;
-    }
+    List<StoredAttachment> importedFiles = new ArrayList<>();
+    Map<String, AttachmentReference> importedAttachments = uploadAttachments(archive, manifest, importedFiles);
+    Note target = strategy == ImportStrategy.OVERRIDE ? duplicate : new Note();
+    String title = strategy == ImportStrategy.COPY && duplicate != null
+      ? uniqueNoteTitle(source.title(), destination == null ? null : destination.getId())
+      : source.title();
+    target.setTitle(title);
+    target.setContent(rewriteAttachmentUrls(source.content(), importedAttachments));
+    target.setFolder(destination);
+    target.setNoteType(source.noteType());
+    target.setFavorite(source.favorite());
+    target.setPinned(source.pinned());
+    target.setArchived(source.archived());
+    target.restoreTimestamps(source.createdAt(), source.updatedAt());
+    Note saved = notes.save(target);
+    attachments.syncNoteAttachments(saved.getId(), saved.getContent());
+    return new NoteImportResult(saved.getId(), saved.getTitle(), duplicate != null && strategy == ImportStrategy.OVERRIDE, importedFiles.size());
   }
 
   private List<ArchiveAttachment> collectAttachments(List<ArchiveNote> archiveNotes) {
-    Map<String, ArchiveAttachment> attachments = new LinkedHashMap<>();
+    Map<String, ArchiveAttachment> collected = new LinkedHashMap<>();
     for (ArchiveNote note : archiveNotes) {
       for (AttachmentReference reference : attachmentReferences(note.content())) {
         String identity = attachmentIdentity(reference.id(), reference.objectKey());
-        if (attachments.containsKey(identity)) continue;
+        if (collected.containsKey(identity)) continue;
         try {
-          StatObjectResponse metadata = storage.statObject(StatObjectArgs.builder()
-            .bucket(bucket)
-            .object(reference.objectKey())
-            .build());
-          String name = fileName(reference.objectKey());
-          attachments.put(identity, new ArchiveAttachment(
+          AttachmentMetadata metadata = attachments.getMetadata(UUID.fromString(reference.id()));
+          String name = metadata.fileName();
+          collected.put(identity, new ArchiveAttachment(
             reference.id(),
             reference.objectKey(),
             "attachments/" + reference.id() + "/" + name,
             name,
-            metadata.contentType() == null || metadata.contentType().isBlank()
-              ? MediaType.APPLICATION_OCTET_STREAM_VALUE
-              : metadata.contentType(),
-            metadata.size()
+            metadata.contentType(),
+            metadata.fileSize()
           ));
-        } catch (Exception exception) {
+        } catch (RuntimeException exception) {
           throw new ResponseStatusException(
-            HttpStatus.BAD_GATEWAY,
+            HttpStatus.NOT_FOUND,
             "Could not read attachment " + fileName(reference.objectKey()) + " for export",
             exception
           );
         }
       }
     }
-    return List.copyOf(attachments.values());
+    return List.copyOf(collected.values());
   }
 
   private ArchiveNote requireSingleNote(ArchiveManifest manifest) {
@@ -418,6 +394,7 @@ public class FolderArchiveService {
     List<Note> notesToDelete = notes.findAllByOrderByUpdatedAtDesc().stream()
       .filter(note -> subtreeIds.contains(note.getFolderId()))
       .toList();
+    attachments.deleteFilesForNotes(notesToDelete.stream().map(Note::getId).toList());
     notes.deleteAll(notesToDelete);
     List<Folder> descendants = subtreeIds.stream()
       .filter(id -> !id.equals(root.getId()))
@@ -581,27 +558,18 @@ public class FolderArchiveService {
   private Map<String, AttachmentReference> uploadAttachments(
     ParsedArchive archive,
     ArchiveManifest manifest,
-    List<UploadedObject> uploadedObjects
+    List<StoredAttachment> importedFiles
   ) {
     Map<String, AttachmentReference> imported = new HashMap<>();
     for (ArchiveAttachment attachment : manifest.attachments()) {
-      String newId = UUID.randomUUID().toString();
-      String newKey = newId + "/" + fileName(attachment.fileName());
       byte[] content = archive.entries().get(attachment.archivePath());
-      try {
-        storage.putObject(PutObjectArgs.builder()
-          .bucket(bucket)
-          .object(newKey)
-          .stream(new java.io.ByteArrayInputStream(content), content.length, -1)
-          .contentType(attachment.contentType())
-          .build());
-      } catch (Exception exception) {
-        throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Could not restore attachment " + attachment.fileName(), exception);
-      }
-      uploadedObjects.add(new UploadedObject(newId, newKey));
+      StoredAttachment stored = attachments.storeImported(attachment.fileName(), attachment.contentType(), content);
+      importedFiles.add(stored);
+      String newId = stored.getId().toString();
+      String newKey = newId + "/" + stored.getFileName();
       imported.put(
         attachmentIdentity(attachment.id(), attachment.objectKey()),
-        new AttachmentReference(newId, newKey, attachment.fileName())
+        new AttachmentReference(newId, newKey, stored.getFileName())
       );
     }
     return imported;
@@ -652,19 +620,11 @@ public class FolderArchiveService {
       note.setPinned(source.pinned());
       note.setArchived(source.archived());
       note.restoreTimestamps(source.createdAt(), source.updatedAt());
-      imported.add(notes.save(note));
+      Note saved = notes.save(note);
+      attachments.syncNoteAttachments(saved.getId(), saved.getContent());
+      imported.add(saved);
     }
     return imported;
-  }
-
-  private void removeUploadedObjects(List<UploadedObject> uploadedObjects, RuntimeException original) {
-    for (UploadedObject uploaded : uploadedObjects) {
-      try {
-        storage.removeObject(RemoveObjectArgs.builder().bucket(bucket).object(uploaded.objectKey()).build());
-      } catch (Exception cleanupException) {
-        original.addSuppressed(cleanupException);
-      }
-    }
   }
 
   private List<String> folderPaths(ArchiveManifest manifest, Map<UUID, ArchiveFolder> foldersById) {
@@ -760,7 +720,6 @@ public class FolderArchiveService {
       String encodedName = URLEncoder.encode(replacement.fileName(), StandardCharsets.UTF_8).replace("+", "%20");
       String url = "/api/attachments/" + replacement.id()
         + "?key=" + encodedKey + "&amp;fileName=" + encodedName;
-      String sourceMatch = matcher.group();
       if ("true".equalsIgnoreCase(matcher.group(3))) url += "&amp;inline=true";
       matcher.appendReplacement(rewritten, Matcher.quoteReplacement(url));
     }
@@ -919,5 +878,4 @@ public class FolderArchiveService {
 
   private record ParsedArchive(ArchiveManifest manifest, Map<String, byte[]> entries) {}
   private record AttachmentReference(String id, String objectKey, String fileName) {}
-  private record UploadedObject(String id, String objectKey) {}
 }

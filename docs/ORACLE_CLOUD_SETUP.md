@@ -32,7 +32,7 @@ Create or use a VCN with an internet gateway and a public subnet, then configure
 | 80, 443 | `0.0.0.0/0` (and `::/0` only if IPv6 is configured) | Coolify proxy and HTTP-01 certificate validation; open only when public access is explicitly approved |
 | 8000, 6001, 6002 | Your current public IP `/32`, or omit and use an SSH tunnel | Coolify dashboard, realtime updates, and web terminal during initial setup |
 
-Do **not** open 5432, 8080, 9000, 9001, or container port 80 to the Internet. NoteSphere's production Compose file publishes no host ports and puts PostgreSQL and RustFS on internal Docker networks. Only the frontend is attached to Coolify's proxy network.
+Do **not** open 5432, 8080, or container port 80 to the Internet. NoteSphere's production Compose file publishes no host ports and puts PostgreSQL on an internal Docker network. Only the frontend is attached to Coolify's proxy network.
 
 Restrict egress only if you understand the consequences; Ubuntu updates, image pulls, and certificate issuance need outbound connectivity. Oracle documents up to 10 TB/month of Always Free outbound data transfer. The single-VM design avoids a separate OCI load balancer; Oracle currently lists a 10-Mbps Always Free Flexible Load Balancer, but it is unnecessary here.
 

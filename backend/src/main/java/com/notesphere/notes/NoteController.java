@@ -1,5 +1,6 @@
 package com.notesphere.notes;
 
+import com.notesphere.storage.AttachmentService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,10 +31,12 @@ public class NoteController {
 
   private final NoteRepository repo;
   private final FolderRepository folders;
+  private final AttachmentService attachments;
 
-  public NoteController(NoteRepository repo, FolderRepository folders) {
+  public NoteController(NoteRepository repo, FolderRepository folders, AttachmentService attachments) {
     this.repo = repo;
     this.folders = folders;
+    this.attachments = attachments;
   }
 
   @GetMapping
@@ -69,7 +72,9 @@ public class NoteController {
   public Note create(@Valid @RequestBody NoteRequest request) {
     Note note = new Note();
     applyRequest(note, request, true);
-    return repo.save(note);
+    Note saved = repo.save(note);
+    attachments.syncNoteAttachments(saved.getId(), saved.getContent());
+    return saved;
   }
 
   @PutMapping("/{id}")
@@ -77,7 +82,9 @@ public class NoteController {
   public Note update(@PathVariable UUID id, @Valid @RequestBody NoteRequest request) {
     Note note = get(id);
     applyRequest(note, request, false);
-    return repo.save(note);
+    Note saved = repo.save(note);
+    attachments.syncNoteAttachments(saved.getId(), saved.getContent());
+    return saved;
   }
 
   @PatchMapping("/{id}/folder")
@@ -95,6 +102,7 @@ public class NoteController {
     if (!repo.existsById(id)) {
       throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Note not found");
     }
+    attachments.deleteFilesForNotes(List.of(id));
     repo.deleteById(id);
   }
 

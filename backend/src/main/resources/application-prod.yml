@@ -1,6 +1,13 @@
 server:
   forward-headers-strategy: framework
   shutdown: graceful
+  servlet:
+    session:
+      timeout: 30m
+      cookie:
+        http-only: true
+        secure: true
+        same-site: lax
 
 spring:
   datasource:
@@ -32,10 +39,10 @@ management:
 app:
   archive:
     max-size: ${APP_MAX_ARCHIVE_SIZE:260MB}
+  upload:
+    max-size: ${APP_MAX_UPLOAD_SIZE:25MB}
+  auth:
+    username: ${APP_AUTH_USERNAME}
+    password: ${APP_AUTH_PASSWORD}
   cors:
     allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:}
-  s3:
-    endpoint: ${S3_ENDPOINT}
-    access-key: ${S3_ACCESS_KEY}
-    secret-key: ${S3_SECRET_KEY}
-    bucket: ${S3_BUCKET}

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 stack_label="${STACK_LABEL:-production}"
-services=(postgres object-storage backend frontend)
+services=(postgres backend frontend)
 failures=0
 
 for service in "${services[@]}"; do
@@ -16,24 +16,10 @@ for service in "${services[@]}"; do
   state="$(docker inspect --format '{{.State.Status}}' "$container_id")"
   health="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}not-configured{{end}}' "$container_id")"
   printf '%-14s state=%s health=%s\n' "$service" "$state" "$health"
-  if [[ "$state" != running ]]; then
-    failures=$((failures + 1))
-  elif [[ "$service" != object-storage && "$health" != healthy ]]; then
+  if [[ "$state" != running || "$health" != healthy ]]; then
     failures=$((failures + 1))
   fi
 done
-
-initializer_id="$(docker ps -aq --filter "label=com.notesphere.stack=${stack_label}" --filter label=com.notesphere.service=storage-initializer | head -n 1)"
-if [[ -z "$initializer_id" ]]; then
-  printf 'FAIL: storage bucket initializer container was not found\n'
-  failures=$((failures + 1))
-else
-  initializer_status="$(docker inspect --format '{{.State.Status}} {{.State.ExitCode}}' "$initializer_id")"
-  printf 'storage-init   state=%s\n' "$initializer_status"
-  if [[ "$initializer_status" != "exited 0" ]]; then
-    failures=$((failures + 1))
-  fi
-fi
 
 if [[ -n "${PUBLIC_URL:-}" ]]; then
   if ! command -v curl >/dev/null 2>&1; then
@@ -44,6 +30,13 @@ if [[ -n "${PUBLIC_URL:-}" ]]; then
     failures=$((failures + 1))
   else
     printf 'HTTP health check passed: %s/health\n' "${PUBLIC_URL%/}"
+    auth_status="$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 10 "${PUBLIC_URL%/}/api/auth/session")"
+    if [[ "$auth_status" != 401 ]]; then
+      printf 'FAIL: unauthenticated API check returned HTTP %s, expected 401\n' "$auth_status"
+      failures=$((failures + 1))
+    else
+      echo "Unauthenticated API access is rejected."
+    fi
   fi
 fi
 

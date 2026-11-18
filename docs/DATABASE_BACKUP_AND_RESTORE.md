@@ -48,4 +48,4 @@ For production cutover, first validate the restored note/folder counts and appli
 
 ## Recovery practice
 
-Keep PostgreSQL and file-storage backups from the same time window. Store at least one encrypted/off-host copy, monitor OCI's current 20 GB free Object Storage limit, and test restore into a new database before relying on backups. Manual retention cleanup must be deliberate; these scripts do not delete old backups.
+PostgreSQL backups include attachment bytes, so note and file recovery uses one consistent database dump. Store at least one encrypted/off-host copy, monitor OCI's current 20 GB free Object Storage limit, and test restore into a new database before relying on backups. Manual retention cleanup must be deliberate; these scripts do not delete old backups.

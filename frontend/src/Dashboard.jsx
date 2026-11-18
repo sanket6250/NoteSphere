@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Archive, Clock3, FileText, Folder, RefreshCw, Sparkles } from 'lucide-react';
+import { apiFetch } from './api';
 
 const API = import.meta.env.VITE_API_BASE_URL || '';
 
@@ -131,7 +132,7 @@ export default function Dashboard({ refreshKey, onOpenFolder, onOpenNote }) {
       setLoading(true);
       setError('');
       try {
-        const response = await fetch(`${API}/api/dashboard`);
+        const response = await apiFetch(`${API}/api/dashboard`);
         if (!response.ok) throw new Error(`Could not load workspace statistics (${response.status}).`);
         const result = await response.json();
         if (!cancelled) setData(result);

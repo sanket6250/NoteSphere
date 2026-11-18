@@ -29,7 +29,7 @@ This is a manual server-side action; it has not been run from this workspace. Fo
 
 ## Proxy and application network
 
-Coolify's self-hosted installation creates a Docker network named `coolify`. The production Compose file attaches **only** the frontend to that network. Configure the `frontend` service as the receiving HTTP service on internal port 80 in Coolify's **Domains** screen. PostgreSQL, RustFS, the bucket initializer and the backend do not join the public proxy network and have no published host ports.
+Coolify's self-hosted installation creates a Docker network named `coolify`. The production Compose file attaches **only** the frontend to that network. Configure the `frontend` service as the receiving HTTP service on internal port 80 in Coolify's **Domains** screen. PostgreSQL and the backend do not join the public proxy network and have no published host ports.
 
 Coolify's firewall reference lists 22, 80 and 443 for the server, and 8000/6001/6002 for direct dashboard access. Keep 22 restricted, and keep direct dashboard ports restricted or closed. Open 80/443 to the Internet only when you have explicitly approved public access and have addressed NoteSphere's missing application authentication.
 

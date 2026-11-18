@@ -14,4 +14,4 @@ for service in backend frontend; do
 done
 
 docker restart "${container_ids[@]}"
-echo "Application containers restarted. PostgreSQL, object storage, and volumes were not changed."
+echo "Application containers restarted. PostgreSQL and persistent volumes were not changed."

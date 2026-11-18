@@ -16,13 +16,17 @@ import {
   X,
 } from 'lucide-react';
 import { DialogFrame, useDialogs } from './OverlaySystem';
+import { csrfHeader } from './api';
 
 const API = import.meta.env.VITE_API_BASE_URL || '';
 
-function uploadWithProgress(url, file, onProgress) {
+async function uploadWithProgress(url, file, onProgress) {
+  const headers = await csrfHeader();
   return new Promise((resolve, reject) => {
     const request = new XMLHttpRequest();
     request.open('POST', url);
+    request.withCredentials = true;
+    Object.entries(headers).forEach(([name, value]) => request.setRequestHeader(name, value));
     request.responseType = 'json';
     request.upload.addEventListener('progress', (event) => {
       if (event.lengthComputable) onProgress(Math.round((event.loaded / event.total) * 100));

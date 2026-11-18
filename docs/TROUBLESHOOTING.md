@@ -24,7 +24,7 @@ Confirm the VM reports `aarch64` and inspect each image with:
 docker buildx imagetools inspect IMAGE
 ```
 
-The pinned RustFS/AWS CLI images and current Postgres, Nginx and Temurin image manifests were checked for `linux/arm64` while preparing this deployment. A future digest update must be checked again. Do not add `platform: linux/amd64` as a workaround on A1; emulation can be slow and may fail.
+The current Postgres, Nginx and Temurin image manifests were checked for `linux/arm64` while preparing this deployment. A future image update must be checked again. Do not add `platform: linux/amd64` as a workaround on A1; emulation can be slow and may fail.
 
 ## Backend is unhealthy or migrations fail
 
@@ -34,13 +34,13 @@ Check `docker logs` for the backend and PostgreSQL. Confirm `SPRING_PROFILES_ACT
 
 The `APP_DB_USER` role is created only when PostgreSQL initializes an empty data volume. Changing `APP_DB_USER` or `APP_DB_PASSWORD` in Coolify later does not change the existing PostgreSQL role; rotate it in PostgreSQL first, then update the matching application secret.
 
-## RustFS or bucket initializer fails
+## Login or CSRF errors
 
-Confirm RustFS is running, both services use the same `MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD`, `MINIO_BUCKET` is valid, and the initializer is on the data-private network. The initializer waits for the S3 API and creates the bucket only if missing. Check its exited status and logs; do not clear `notesphere-production-object-data`.
+Confirm `APP_AUTH_USERNAME` and `APP_AUTH_PASSWORD` are set in Coolify and the frontend uses the same-origin API. Refresh the browser session after changing credentials. The frontend fetches CSRF tokens before mutations; do not disable CSRF protection as a workaround.
 
 ## Frontend loads but API calls fail
 
-Confirm Coolify routes the domain to `frontend` internal port 80. The Nginx `backend` hostname resolves only through the private API network; `backend` must remain attached to it. Do not use a workstation/VPS public IP for `S3_ENDPOINT` or datasource URL. Keep browser calls same-origin and leave CORS blank unless the deployment is intentionally split across origins.
+Confirm Coolify routes the domain to `frontend` internal port 80. The Nginx `backend` hostname resolves only through the private API network; `backend` must remain attached to it. Keep browser calls same-origin and leave CORS blank unless the deployment is intentionally split across origins.
 
 ## Let's Encrypt cannot issue a certificate
 
@@ -52,4 +52,4 @@ Run `df -h`, `free -h`, `docker system df`, and check container logs. The OCI fr
 
 ## Backup or restore errors
 
-Check that the container/network labels and variables point to the intended production stack. PostgreSQL restore requires a new database name; file restore requires a different empty bucket. The scripts intentionally refuse destructive overwrite and do not delete partial restore targets or old backups.
+Check that the container/network labels and variables point to the intended production stack. PostgreSQL restore requires a new database name and contains the corresponding attachment bytes. The scripts intentionally do not delete partial restore targets or old backups.

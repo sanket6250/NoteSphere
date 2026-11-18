@@ -49,6 +49,8 @@ import FolderDashboard from './FolderDashboard';
 import NoteImportDialog from './NoteImportDialog';
 import { getNoteTemplate, NOTE_TEMPLATES } from './noteTemplates';
 import { useDialogs, useManagedMenu } from './OverlaySystem';
+import AuthGate from './AuthGate';
+import { apiFetch } from './api';
 
 const API = import.meta.env.VITE_API_BASE_URL || '';
 const EMPTY_CONTENT = '<p></p>';
@@ -208,7 +210,7 @@ function escapeHtml(value) {
   })[character]);
 }
 
-export default function App() {
+function NotesphereApp() {
   const [notes, setNotes] = useState([]);
   const [folders, setFolders] = useState([]);
   const [activeId, setActiveId] = useState(null);
@@ -326,7 +328,7 @@ export default function App() {
     if (activeIdRef.current === note.id) setSaveState('saving');
 
     try {
-      const response = await fetch(`${API}/api/notes/${note.id}`, {
+      const response = await apiFetch(`${API}/api/notes/${note.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -380,7 +382,7 @@ export default function App() {
         if (viewType === 'favorites') params.set('favorites', 'true');
         if (viewType === 'archived') params.set('archived', 'true');
         const query = params.toString();
-        const response = await fetch(`${API}/api/notes${query ? `?${query}` : ''}`);
+        const response = await apiFetch(`${API}/api/notes${query ? `?${query}` : ''}`);
         if (!response.ok) throw new Error(`Could not load notes (${response.status}).`);
         const data = await response.json();
         if (cancelled) return;
@@ -407,7 +409,7 @@ export default function App() {
     let cancelled = false;
     async function loadFolders() {
       try {
-        const response = await fetch(`${API}/api/folders`);
+        const response = await apiFetch(`${API}/api/folders`);
         if (!response.ok) throw new Error(`Could not load folders (${response.status}).`);
         const data = await response.json();
         if (!cancelled) setFolders(data);
@@ -487,7 +489,7 @@ export default function App() {
   );
 
   async function refreshFolders() {
-    const response = await fetch(`${API}/api/folders`);
+    const response = await apiFetch(`${API}/api/folders`);
     if (!response.ok) throw new Error(`Could not load folders (${response.status}).`);
     const data = await response.json();
     setFolders(data);
@@ -496,7 +498,7 @@ export default function App() {
 
   async function createFolderRequest(name, parentFolderId = null) {
     try {
-      const response = await fetch(`${API}/api/folders`, {
+      const response = await apiFetch(`${API}/api/folders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, parentFolderId }),
@@ -547,7 +549,7 @@ export default function App() {
       validate: (value) => value.trim() ? '' : 'Enter a folder name.',
       onConfirm: async (value) => {
         if (value.trim() === folder.name) return value.trim();
-        const response = await fetch(`${API}/api/folders/${folder.id}`, {
+        const response = await apiFetch(`${API}/api/folders/${folder.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: value.trim(), parentFolderId: folder.parentFolderId }),
@@ -571,7 +573,7 @@ export default function App() {
 
   async function moveFolder(folder, parentFolderId) {
     try {
-      const response = await fetch(`${API}/api/folders/${folder.id}`, {
+      const response = await apiFetch(`${API}/api/folders/${folder.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: folder.name, parentFolderId }),
@@ -591,7 +593,7 @@ export default function App() {
 
   async function exportFolder(folder) {
     try {
-      const response = await fetch(`${API}/api/folders/${folder.id}/export`);
+      const response = await apiFetch(`${API}/api/folders/${folder.id}/export`);
       if (!response.ok) {
         const detail = await response.text();
         throw new Error(detail || `Could not export folder (${response.status}).`);
@@ -614,7 +616,7 @@ export default function App() {
   async function exportNote(note) {
     if (dirtyIdsRef.current.has(note.id) && !(await saveNote(note))) return;
     try {
-      const response = await fetch(`${API}/api/notes/${note.id}/export`);
+      const response = await apiFetch(`${API}/api/notes/${note.id}/export`);
       if (!response.ok) {
         const detail = await response.text();
         throw new Error(detail || `Could not export note (${response.status}).`);
@@ -643,7 +645,7 @@ export default function App() {
     try {
       const formData = new FormData();
       formData.append('file', file);
-      const response = await fetch(`${API}/api/notes/import/preview`, { method: 'POST', body: formData });
+      const response = await apiFetch(`${API}/api/notes/import/preview`, { method: 'POST', body: formData });
       if (!response.ok) {
         const detail = await response.text();
         throw new Error(detail || `Could not read note backup (${response.status}).`);
@@ -672,7 +674,7 @@ export default function App() {
     try {
       const formData = new FormData();
       formData.append('file', file);
-      const response = await fetch(`${API}/api/notes/import?strategy=${encodeURIComponent(strategy)}`, {
+      const response = await apiFetch(`${API}/api/notes/import?strategy=${encodeURIComponent(strategy)}`, {
         method: 'POST',
         body: formData,
       });
@@ -682,7 +684,7 @@ export default function App() {
       }
       const result = await response.json();
       importCommitted = true;
-      const importedResponse = await fetch(`${API}/api/notes/${result.noteId}`);
+      const importedResponse = await apiFetch(`${API}/api/notes/${result.noteId}`);
       if (!importedResponse.ok) throw new Error(`The note was imported but could not be loaded (${importedResponse.status}).`);
       const imported = normalizeNote(await importedResponse.json());
       dirtyIdsRef.current.delete(imported.id);
@@ -751,7 +753,7 @@ export default function App() {
       confirmLabel: 'Delete folder',
       danger: true,
       onConfirm: async () => {
-        const response = await fetch(`${API}/api/folders/${folder.id}`, { method: 'DELETE' });
+        const response = await apiFetch(`${API}/api/folders/${folder.id}`, { method: 'DELETE' });
         if (!response.ok) throw new Error(`Could not delete folder (${response.status}).`);
         await refreshFolders();
         if (viewType === 'folder' && viewFolderId === folder.id) {
@@ -778,7 +780,7 @@ export default function App() {
     if (!current) return;
     if (dirtyIdsRef.current.has(current.id) && !(await saveNote(current))) return;
     try {
-      const response = await fetch(`${API}/api/notes/${current.id}/folder`, {
+      const response = await apiFetch(`${API}/api/notes/${current.id}/folder`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ folderId: folderId || null }),
@@ -817,7 +819,7 @@ export default function App() {
     };
     setSaveState('saving');
     try {
-      const response = await fetch(`${API}/api/notes/${current.id}`, {
+      const response = await apiFetch(`${API}/api/notes/${current.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -842,7 +844,7 @@ export default function App() {
     if (current && dirtyIdsRef.current.has(current.id) && !(await saveNote(current))) return;
 
     try {
-      const response = await fetch(`${API}/api/notes`, {
+      const response = await apiFetch(`${API}/api/notes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, content, noteType, folderId }),
@@ -915,7 +917,7 @@ export default function App() {
       confirmLabel: 'Delete note',
       danger: true,
       onConfirm: async () => {
-        const response = await fetch(`${API}/api/notes/${current.id}`, { method: 'DELETE' });
+        const response = await apiFetch(`${API}/api/notes/${current.id}`, { method: 'DELETE' });
         if (!response.ok) throw new Error(`Delete failed (${response.status}).`);
         dirtyIdsRef.current.delete(current.id);
         requestIdsRef.current.set(current.id, (requestIdsRef.current.get(current.id) || 0) + 1);
@@ -941,10 +943,11 @@ export default function App() {
 
     const formData = new FormData();
     formData.append('file', file);
+    formData.append('noteId', current.id);
     setUploading(true);
 
     try {
-      const response = await fetch(`${API}/api/attachments`, { method: 'POST', body: formData });
+      const response = await apiFetch(`${API}/api/attachments`, { method: 'POST', body: formData });
       if (!response.ok) {
         const message = await response.text();
         throw new Error(message || `Upload failed (${response.status}).`);
@@ -1353,4 +1356,8 @@ export default function App() {
       )}
     </div>
   );
+}
+
+export default function App() {
+  return <AuthGate><NotesphereApp /></AuthGate>;
 }

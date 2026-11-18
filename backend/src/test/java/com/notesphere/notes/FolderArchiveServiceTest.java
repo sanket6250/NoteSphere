@@ -1,7 +1,8 @@
 package com.notesphere.notes;
 
+import com.notesphere.storage.AttachmentService;
+import com.notesphere.storage.StoredAttachment;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.minio.MinioClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockMultipartFile;
@@ -9,6 +10,7 @@ import org.springframework.util.unit.DataSize;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.io.ByteArrayOutputStream;
+import java.io.ByteArrayInputStream;
 import java.time.Instant;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -18,13 +20,16 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
+import java.util.zip.ZipInputStream;
 import org.mockito.ArgumentCaptor;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -35,17 +40,18 @@ class FolderArchiveServiceTest {
   private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
   private FolderRepository folders;
   private NoteRepository notes;
+  private AttachmentService attachments;
 
   @BeforeEach
   void setUp() {
     folders = mock(FolderRepository.class);
     notes = mock(NoteRepository.class);
+    attachments = mock(AttachmentService.class);
     archives = new FolderArchiveService(
       folders,
       notes,
-      mock(MinioClient.class),
+      attachments,
       objectMapper,
-      "notesphere-files",
       DataSize.ofMegabytes(2)
     );
   }
@@ -188,6 +194,79 @@ class FolderArchiveServiceTest {
     );
 
     assertThrows(ResponseStatusException.class, () -> archives.previewNote(archive(manifest)));
+  }
+
+  @Test
+  void exportsActualAttachmentBytesInTheZip() throws Exception {
+    UUID attachmentId = UUID.randomUUID();
+    byte[] content = {0, 1, (byte) 0x80, (byte) 0xff};
+    FolderArchiveService.ArchiveManifest manifest = new FolderArchiveService.ArchiveManifest(
+      1, UUID.randomUUID(), List.of(), List.of(), List.of()
+    );
+    FolderArchiveService.ArchiveAttachment attachment = new FolderArchiveService.ArchiveAttachment(
+      attachmentId.toString(), attachmentId + "/photo.png", "attachments/" + attachmentId + "/photo.png",
+      "photo.png", "image/png", content.length
+    );
+    when(attachments.read(attachmentId)).thenReturn(content);
+    ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+
+    archives.writeExport(new FolderArchiveService.FolderArchiveExport(manifest, List.of(attachment)), bytes);
+
+    try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(bytes.toByteArray()), StandardCharsets.UTF_8)) {
+      assertEquals("manifest.json", zip.getNextEntry().getName());
+      zip.closeEntry();
+      assertEquals(attachment.archivePath(), zip.getNextEntry().getName());
+      assertArrayEquals(content, zip.readAllBytes());
+    }
+  }
+
+  @Test
+  void noteImportRestoresBytesAndRewritesAttachmentUrl() throws Exception {
+    UUID sourceFolderId = UUID.randomUUID();
+    UUID sourceNoteId = UUID.randomUUID();
+    UUID sourceAttachmentId = UUID.randomUUID();
+    UUID restoredAttachmentId = UUID.randomUUID();
+    String objectKey = sourceAttachmentId + "/image.png";
+    String encodedKey = URLEncoder.encode(objectKey, StandardCharsets.UTF_8);
+    byte[] content = {0, 5, (byte) 0xfe, (byte) 0xff};
+    String noteContent = "<img src=\"/api/attachments/" + sourceAttachmentId
+      + "?key=" + encodedKey + "&amp;fileName=image.png&amp;inline=true\">";
+    FolderArchiveService.ArchiveManifest manifest = new FolderArchiveService.ArchiveManifest(
+      1,
+      sourceFolderId,
+      List.of(new FolderArchiveService.ArchiveFolder(sourceFolderId, null, "Notes", Instant.EPOCH, Instant.EPOCH)),
+      List.of(new FolderArchiveService.ArchiveNote(
+        sourceNoteId, sourceFolderId, "Photo", noteContent, "blank", false, false, false, Instant.EPOCH, Instant.EPOCH
+      )),
+      List.of(new FolderArchiveService.ArchiveAttachment(
+        sourceAttachmentId.toString(), objectKey, "attachments/" + objectKey,
+        "image.png", "image/png", content.length
+      ))
+    );
+    StoredAttachment restored = mock(StoredAttachment.class);
+    when(restored.getId()).thenReturn(restoredAttachmentId);
+    when(restored.getFileName()).thenReturn("image.png");
+    when(attachments.storeImported(eq("image.png"), eq("image/png"), any(byte[].class))).thenReturn(restored);
+    when(folders.findById(sourceFolderId)).thenReturn(Optional.empty());
+    when(notes.findById(sourceNoteId)).thenReturn(Optional.empty());
+    when(notes.findAllByOrderByUpdatedAtDesc()).thenReturn(List.of());
+    when(notes.save(any(Note.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+    FolderArchiveService.NoteImportResult result = archives.importNote(
+      archive(manifest, Map.of("attachments/" + objectKey, content)),
+      FolderArchiveService.ImportStrategy.COPY
+    );
+
+    assertEquals(1, result.attachmentsRestored());
+    ArgumentCaptor<byte[]> restoredBytes = ArgumentCaptor.forClass(byte[].class);
+    verify(attachments).storeImported(eq("image.png"), eq("image/png"), restoredBytes.capture());
+    assertArrayEquals(content, restoredBytes.getValue());
+    ArgumentCaptor<Note> savedNote = ArgumentCaptor.forClass(Note.class);
+    verify(notes).save(savedNote.capture());
+    org.junit.jupiter.api.Assertions.assertTrue(
+      savedNote.getValue().getContent().contains("/api/attachments/" + restoredAttachmentId)
+    );
+    verify(attachments).syncNoteAttachments(savedNote.getValue().getId(), savedNote.getValue().getContent());
   }
 
   private MockMultipartFile archive(FolderArchiveService.ArchiveManifest manifest) throws Exception {
