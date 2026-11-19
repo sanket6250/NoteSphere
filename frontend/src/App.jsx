@@ -11,10 +11,12 @@ import {
   Folder,
   Folders,
   LoaderCircle,
+  LogOut,
   Menu,
   MoreHorizontal,
   Pin,
   Plus,
+  Printer,
   Search,
   Save,
   Star,
@@ -48,9 +50,11 @@ import EditorToolbar from './EditorToolbar';
 import FolderDashboard from './FolderDashboard';
 import NoteImportDialog from './NoteImportDialog';
 import { getNoteTemplate, NOTE_TEMPLATES } from './noteTemplates';
-import { useDialogs, useManagedMenu } from './OverlaySystem';
+import { normalizeAttachmentUrls } from './attachmentUrls';
+import { PortalMenu, useDialogs, useManagedMenu } from './OverlaySystem';
 import AuthGate from './AuthGate';
 import { apiFetch } from './api';
+import { exportWordDocument, importDocumentFile } from './documentTransfer';
 
 const API = import.meta.env.VITE_API_BASE_URL || '';
 const EMPTY_CONTENT = '<p></p>';
@@ -87,6 +91,20 @@ const RichTextStyle = TextStyle.extend({
         parseHTML: (element) => element.style.fontSize || null,
         renderHTML: (attributes) => (attributes.fontSize
           ? { style: `font-size: ${attributes.fontSize}` }
+          : {}),
+      },
+      backgroundColor: {
+        default: null,
+        parseHTML: (element) => element.style.backgroundColor || null,
+        renderHTML: (attributes) => (attributes.backgroundColor
+          ? { style: `background-color: ${attributes.backgroundColor}` }
+          : {}),
+      },
+      letterSpacing: {
+        default: null,
+        parseHTML: (element) => element.style.letterSpacing || null,
+        renderHTML: (attributes) => (attributes.letterSpacing
+          ? { style: `letter-spacing: ${attributes.letterSpacing}` }
           : {}),
       },
     };
@@ -180,15 +198,8 @@ function getCountableText(html) {
   return readNode(document.body).replace(/\n+/g, '\n').replace(/^\n+|\n+$/g, '');
 }
 
-function normalizeAttachmentUrls(html) {
-  return (html || '').replace(
-    /https?:\/\/[^/"'<>\s]+(\/api\/attachments\/[^"'<>\s]+)/gi,
-    '$1',
-  );
-}
-
 function normalizeNote(note) {
-  return { ...note, content: normalizeAttachmentUrls(note.content) };
+  return { ...note, content: normalizeAttachmentUrls(note.content, API) };
 }
 
 function getAttachmentUrl(attachment, inline = false) {
@@ -210,7 +221,7 @@ function escapeHtml(value) {
   })[character]);
 }
 
-function NotesphereApp() {
+function NotesphereApp({ onSignOut }) {
   const [notes, setNotes] = useState([]);
   const [folders, setFolders] = useState([]);
   const [activeId, setActiveId] = useState(null);
@@ -230,11 +241,16 @@ function NotesphereApp() {
   const [noteImportError, setNoteImportError] = useState('');
   const [noteImportBusy, setNoteImportBusy] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
+  const [editorZoom, setEditorZoom] = useState(100);
   const dialogs = useDialogs();
   const noteActionsMenu = useManagedMenu();
+  const profileMenu = useManagedMenu();
+  const noteActionsAnchorRef = useRef(null);
+  const profileMenuAnchorRef = useRef(null);
   const fileInputRef = useRef(null);
   const imageInputRef = useRef(null);
   const noteArchiveInputRef = useRef(null);
+  const documentInputRef = useRef(null);
   const activeIdRef = useRef(activeId);
   const dirtyIdsRef = useRef(new Set());
   const versionsRef = useRef(new Map());
@@ -425,7 +441,7 @@ function NotesphereApp() {
 
   useEffect(() => {
     if (!editor) return;
-    const content = normalizeAttachmentUrls(current?.content || EMPTY_CONTENT);
+    const content = normalizeAttachmentUrls(current?.content || EMPTY_CONTENT, API);
     if (editor.getHTML() !== content) editor.commands.setContent(content, false);
   }, [activeId, current?.content, editor]);
 
@@ -633,6 +649,54 @@ function NotesphereApp() {
       setNotice({ tone: 'success', message: `“${note.title || 'Untitled note'}” backup downloaded.` });
     } catch (error) {
       setNotice({ tone: 'error', message: error.message || 'The note backup could not be downloaded.' });
+    }
+  }
+
+  async function exportWord(note) {
+    try {
+      const content = editor?.getHTML() || note.content || EMPTY_CONTENT;
+      const documentBlob = await exportWordDocument(note.title || 'Untitled note', content);
+      const url = URL.createObjectURL(documentBlob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${(note.title || 'Untitled note').replace(/[\\/:*?"<>|]/g, '_')}.docx`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setNotice({ tone: 'success', message: 'Word document downloaded.' });
+    } catch (error) {
+      setNotice({ tone: 'error', message: error.message || 'The Word document could not be exported.' });
+    }
+  }
+
+  async function importDocument(file) {
+    if (!file || !current) return;
+    if (file.size > MAX_FILE_SIZE) {
+      setNotice({ tone: 'error', message: 'Choose a document smaller than 25 MB.' });
+      return;
+    }
+    const confirmed = await dialogs.confirm({
+      title: 'Import document into this note?',
+      message: 'The document text will replace this note’s content. Existing attachments will remain. This change will autosave.',
+      confirmLabel: 'Replace note content',
+      danger: true,
+    });
+    if (!confirmed) return;
+    if (dirtyIdsRef.current.has(current.id) && !(await saveNote(current))) return;
+
+    setUploading(true);
+    try {
+      const content = await importDocumentFile(file);
+      if (!editor || activeIdRef.current !== current.id) {
+        throw new Error('The active note changed before the document could be imported. Please try again.');
+      }
+      editor.commands.setContent(content);
+      setNotice({ tone: 'success', message: `${file.name} was imported into the note.` });
+    } catch (error) {
+      setNotice({ tone: 'error', message: error.message || 'The document could not be imported.' });
+    } finally {
+      setUploading(false);
     }
   }
 
@@ -930,6 +994,25 @@ function NotesphereApp() {
     })) return;
   }
 
+  async function confirmSignOut() {
+    profileMenu.close();
+    const confirmed = await dialogs.confirm({
+      title: 'Sign out?',
+      message: 'Your notes are saved in your workspace. You can sign in again at any time.',
+      confirmLabel: 'Sign out',
+      danger: true,
+    });
+    if (confirmed) {
+      const result = await onSignOut();
+      if (!result) {
+        await dialogs.alert({
+          title: 'Sign out failed',
+          message: 'The server could not end this session. Please try again.',
+        });
+      }
+    }
+  }
+
   async function uploadFile(file, type) {
     if (!file || !current) return;
     if (file.size > MAX_FILE_SIZE) {
@@ -1030,6 +1113,17 @@ function NotesphereApp() {
               event.target.value = '';
             }}
           />
+          <input
+            ref={documentInputRef}
+            className="visually-hidden"
+            type="file"
+            accept=".docx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            aria-label="Choose a PDF or Word document"
+            onChange={(event) => {
+              void importDocument(event.target.files?.[0]);
+              event.target.value = '';
+            }}
+          />
           {search && (
             <button type="button" className="search-clear" aria-label="Clear search" onClick={() => setSearch('')}>
               <X size={14} />
@@ -1116,6 +1210,32 @@ function NotesphereApp() {
             <strong>Personal space</strong>
             <span>Private to you</span>
           </div>
+          <div className="profile-menu-wrap" {...profileMenu.menuProps}>
+            <button
+              type="button"
+              ref={profileMenuAnchorRef}
+              className="icon-button profile-menu-trigger"
+              aria-label="Open profile menu"
+              aria-expanded={profileMenu.open}
+              onClick={profileMenu.toggle}
+            >
+              <MoreHorizontal size={18} />
+            </button>
+            <PortalMenu
+              anchorRef={profileMenuAnchorRef}
+              align="end"
+              className="profile-menu"
+              label="Profile actions"
+              menuProps={profileMenu.portalProps}
+              open={profileMenu.open}
+              role="menu"
+              side="top"
+            >
+              <button type="button" role="menuitem" onClick={confirmSignOut}>
+                <LogOut size={15} /> Sign out
+              </button>
+            </PortalMenu>
+          </div>
         </div>
       </aside>
 
@@ -1145,7 +1265,7 @@ function NotesphereApp() {
           </div>
         </header>
 
-        <div className="editor-stage">
+        <div className={`editor-stage${current ? ' editor-stage-note' : ''}`}>
           {viewType === 'dashboard' ? (
             <Dashboard
               onOpenFolder={(id) => selectView('folder', id)}
@@ -1222,6 +1342,7 @@ function NotesphereApp() {
                   <div className="more-menu-wrap" {...noteActionsMenu.menuProps}>
                     <button
                       type="button"
+                      ref={noteActionsAnchorRef}
                       className="icon-button more-button"
                       aria-label="More note actions"
                       aria-expanded={noteActionsMenu.open}
@@ -1229,13 +1350,38 @@ function NotesphereApp() {
                     >
                       <MoreHorizontal size={19} />
                     </button>
-                    {noteActionsMenu.open && (
-                      <div className="more-menu">
+                    <PortalMenu
+                      anchorRef={noteActionsAnchorRef}
+                      align="end"
+                      className="more-menu"
+                      label="More note actions"
+                      menuProps={noteActionsMenu.portalProps}
+                      open={noteActionsMenu.open}
+                      role="menu"
+                    >
                         <button type="button" disabled={uploading} onClick={() => {
                           noteActionsMenu.close();
                           void exportNote(current);
                         }}>
                           <Download size={15} /> Export note with attachments
+                        </button>
+                        <button type="button" disabled={uploading} onClick={() => {
+                          noteActionsMenu.close();
+                          void exportWord(current);
+                        }}>
+                          <FileText size={15} /> Export as Word (.docx)
+                        </button>
+                        <button type="button" disabled={uploading} onClick={() => {
+                          noteActionsMenu.close();
+                          window.print();
+                        }}>
+                          <Printer size={15} /> Print / save as PDF
+                        </button>
+                        <button type="button" disabled={uploading} onClick={() => {
+                          noteActionsMenu.close();
+                          documentInputRef.current?.click();
+                        }}>
+                          <Upload size={15} /> Import PDF or Word document
                         </button>
                         <button type="button" disabled={uploading} onClick={() => {
                           noteActionsMenu.close();
@@ -1246,8 +1392,7 @@ function NotesphereApp() {
                         <button type="button" className="danger-action" disabled={uploading} onClick={deleteCurrentNote}>
                           <Trash2 size={15} /> Delete note permanently
                         </button>
-                      </div>
-                    )}
+                    </PortalMenu>
                   </div>
                 </div>
               </div>
@@ -1270,11 +1415,17 @@ function NotesphereApp() {
                   uploading={uploading}
                   focusMode={focusMode}
                   onToggleFocus={() => setFocusMode((value) => !value)}
+                  wordCount={wordCount}
+                  characterCount={characterCount}
+                  zoom={editorZoom}
+                  onZoomChange={setEditorZoom}
                 />
                 {editor?.isActive('table') && (
                   <div className="table-actions" aria-label="Table editing">
                     <span>Table</span>
+                    <button type="button" onClick={() => editor.chain().focus().addRowBefore().run()}>+ Row above</button>
                     <button type="button" onClick={() => editor.chain().focus().addRowAfter().run()}>+ Row</button>
+                    <button type="button" onClick={() => editor.chain().focus().addColumnBefore().run()}>+ Column before</button>
                     <button type="button" onClick={() => editor.chain().focus().addColumnAfter().run()}>+ Column</button>
                     <button type="button" onClick={() => editor.chain().focus().deleteRow().run()}>− Row</button>
                     <button type="button" onClick={() => editor.chain().focus().deleteColumn().run()}>− Column</button>
@@ -1304,7 +1455,7 @@ function NotesphereApp() {
                   }}
                 />
 
-                <div className="editor-page">
+                <div className="editor-page" style={{ zoom: `${editorZoom}%` , width: "100%", }}>
                   <EditorContent editor={editor} />
                 </div>
                 <div className="editor-bottom">
@@ -1359,5 +1510,5 @@ function NotesphereApp() {
 }
 
 export default function App() {
-  return <AuthGate><NotesphereApp /></AuthGate>;
+  return <AuthGate>{({ signOut }) => <NotesphereApp onSignOut={signOut} />}</AuthGate>;
 }

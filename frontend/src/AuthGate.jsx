@@ -38,11 +38,14 @@ export default function AuthGate({ children }) {
   }
 
   async function logout() {
+    setError('');
     try {
       await signOut();
       setSession(null);
+      return true;
     } catch (failure) {
       setError(failure.message || 'Sign-out failed.');
+      return false;
     }
   }
 
@@ -50,12 +53,7 @@ export default function AuthGate({ children }) {
     return <main className="auth-screen" role="status">Checking your session…</main>;
   }
   if (session) {
-    return (
-      <>
-        {children}
-        <button type="button" className="auth-sign-out" onClick={logout}>Sign out</button>
-      </>
-    );
+    return typeof children === 'function' ? children({ signOut: logout }) : children;
   }
   return (
     <main className="auth-screen">

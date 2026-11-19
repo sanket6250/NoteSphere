@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { ChevronRight, Folder, FolderOpen, MoreHorizontal, Plus } from 'lucide-react';
-import { useManagedMenu } from './OverlaySystem';
+import { PortalMenu, useManagedMenu } from './OverlaySystem';
 
 function FolderRow({
   folder,
@@ -14,6 +14,7 @@ function FolderRow({
 }) {
   const [expanded, setExpanded] = useState(true);
   const menu = useManagedMenu();
+  const menuAnchorRef = useRef(null);
   const children = childrenByParent.get(folder.id) || [];
 
   return (
@@ -38,6 +39,7 @@ function FolderRow({
           </button>
           <button
             type="button"
+            ref={menuAnchorRef}
             aria-label={`Actions for ${folder.name}`}
             title="Folder actions"
             aria-expanded={menu.open}
@@ -45,12 +47,18 @@ function FolderRow({
           >
             <MoreHorizontal size={15} />
           </button>
-          {menu.open && (
-            <div className="folder-menu">
-              <button type="button" onClick={() => { menu.close(); onRename(folder); }}>Rename</button>
-              <button type="button" onClick={() => { menu.close(); onDelete(folder); }}>Delete folder…</button>
-            </div>
-          )}
+          <PortalMenu
+            anchorRef={menuAnchorRef}
+            align="end"
+            className="folder-menu"
+            label={`Actions for ${folder.name}`}
+            menuProps={menu.portalProps}
+            open={menu.open}
+            role="menu"
+          >
+            <button type="button" role="menuitem" onClick={() => { menu.close(); onRename(folder); }}>Rename</button>
+            <button type="button" role="menuitem" onClick={() => { menu.close(); onDelete(folder); }}>Delete folder…</button>
+          </PortalMenu>
         </div>
       </div>
       {expanded && children.length > 0 && (

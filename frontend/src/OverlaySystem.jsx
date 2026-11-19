@@ -4,10 +4,12 @@ import React, {
   useContext,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { AlertCircle, LoaderCircle, X } from 'lucide-react';
 
 const OverlayContext = createContext(null);
@@ -20,9 +22,11 @@ export function OverlayProvider({ children }) {
   useEffect(() => {
     function dismissOutsideMenu(event) {
       if (!activeMenu) return;
-      const root = [...document.querySelectorAll('[data-menu-root]')]
-        .find((element) => element.dataset.menuId === activeMenu);
-      if (root && !root.contains(event.target)) setActiveMenu(null);
+      const roots = [...document.querySelectorAll('[data-menu-root]')]
+        .filter((element) => element.dataset.menuId === activeMenu);
+      if (!roots.length || !roots.some((element) => element.contains(event.target))) {
+        setActiveMenu(null);
+      }
     }
 
     function dismissMenuOnEscape(event) {
@@ -92,12 +96,13 @@ export function OverlayProvider({ children }) {
   return (
     <OverlayContext.Provider value={contextValue}>
       {children}
-      {dialog && (
+      {dialog && typeof document !== 'undefined' && createPortal(
         <ManagedDialog
           dialog={dialog}
           onClose={() => closeDialog(dialog.mode === 'confirm' || dialog.mode === 'alert' ? false : null)}
           onChange={updateDialog}
-        />
+        />,
+        document.body,
       )}
     </OverlayContext.Provider>
   );
@@ -117,10 +122,93 @@ export function useManagedMenu() {
   return {
     open,
     menuProps: { 'data-menu-root': '', 'data-menu-id': localId },
+    portalProps: { 'data-menu-root': '', 'data-menu-id': localId },
     toggle: () => context.openMenu(open ? null : localId),
     show: () => context.openMenu(localId),
     close: context.closeMenu,
   };
+}
+
+export function PortalMenu({
+  anchorRef,
+  align = 'start',
+  children,
+  className = '',
+  label,
+  menuProps,
+  open,
+  role,
+  side = 'bottom',
+}) {
+  const popupRef = useRef(null);
+  const [position, setPosition] = useState({ left: 8, top: 8 });
+
+  useLayoutEffect(() => {
+    if (!open) return undefined;
+
+    function updatePosition() {
+      const anchor = anchorRef.current?.getBoundingClientRect();
+      const popup = popupRef.current?.getBoundingClientRect();
+      if (!anchor || !popup) return;
+
+      const margin = 8;
+      const gap = 6;
+      const above = anchor.top - margin;
+      const below = window.innerHeight - anchor.bottom - margin;
+      const canPlaceAbove = above >= popup.height + gap;
+      const canPlaceBelow = below >= popup.height + gap;
+      const openAbove = side === 'top'
+        ? canPlaceAbove || !canPlaceBelow
+        : !canPlaceBelow && canPlaceAbove;
+      const left = align === 'end' ? anchor.right - popup.width : anchor.left;
+      const top = openAbove ? anchor.top - popup.height - gap : anchor.bottom + gap;
+      const maxLeft = Math.max(margin, window.innerWidth - popup.width - margin);
+      const maxTop = Math.max(margin, window.innerHeight - popup.height - margin);
+
+      setPosition({
+        left: Math.max(margin, Math.min(left, maxLeft)),
+        top: Math.max(margin, Math.min(top, maxTop)),
+      });
+    }
+
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    document.addEventListener('scroll', updatePosition, true);
+    const resizeObserver = typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver(updatePosition);
+    if (popupRef.current) resizeObserver?.observe(popupRef.current);
+    if (anchorRef.current) resizeObserver?.observe(anchorRef.current);
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      document.removeEventListener('scroll', updatePosition, true);
+      resizeObserver?.disconnect();
+    };
+  }, [align, anchorRef, open, side]);
+
+  if (!open || typeof document === 'undefined') return null;
+
+  return createPortal(
+    <div
+      {...menuProps}
+      ref={popupRef}
+      className={`portal-menu${className ? ` ${className}` : ''}`}
+      aria-label={label}
+      role={role}
+      style={{
+        position: 'fixed',
+        left: position.left,
+        top: position.top,
+        right: 'auto',
+        bottom: 'auto',
+        zIndex: 1600,
+        maxWidth: 'calc(100vw - 16px)',
+      }}
+    >
+      {children}
+    </div>,
+    document.body,
+  );
 }
 
 export function DialogFrame({
