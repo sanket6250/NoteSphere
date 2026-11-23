@@ -1,6 +1,6 @@
 # Free subdomain and HTTPS
 
-The backend now protects API routes with the configured single-user login. Configure a strong `APP_AUTH_PASSWORD` and verify authentication before routing a public domain. HTTPS encrypts traffic; it does not replace authentication or per-user ownership.
+The backend protects API routes with the single PostgreSQL-backed account. Create that account and verify authentication before routing a public domain. HTTPS encrypts traffic; it does not replace authentication.
 
 ## 1. Choose free DNS
 

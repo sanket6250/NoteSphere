@@ -7,10 +7,7 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.core.userdetails.User;
-import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.provisioning.InMemoryUserDetailsManager;
-import org.springframework.security.crypto.factory.PasswordEncoderFactories;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
@@ -21,28 +18,9 @@ import org.springframework.http.HttpStatus;
 
 @Configuration
 public class SecurityConfig {
-  private static final int MIN_PASSWORD_LENGTH = 12;
-
   @Bean
   PasswordEncoder passwordEncoder() {
-    return PasswordEncoderFactories.createDelegatingPasswordEncoder();
-  }
-
-  @Bean
-  UserDetailsService userDetailsService(
-    @Value("${app.auth.username}") String username,
-    @Value("${app.auth.password}") String password,
-    PasswordEncoder encoder
-  ) {
-    if (username == null || username.isBlank() || !username.equals(username.trim()) || username.length() > 128) {
-      throw new IllegalStateException("APP_AUTH_USERNAME must be configured as a non-blank username of at most 128 characters.");
-    }
-    if (password == null || password.isBlank() || password.length() < MIN_PASSWORD_LENGTH) {
-      throw new IllegalStateException("APP_AUTH_PASSWORD must be configured and contain at least 12 characters.");
-    }
-    return new InMemoryUserDetailsManager(
-      User.withUsername(username).password(encoder.encode(password)).roles("USER").build()
-    );
+    return new BCryptPasswordEncoder(12);
   }
 
   @Bean
@@ -75,7 +53,13 @@ public class SecurityConfig {
       .csrf(csrf -> csrf.csrfTokenRepository(csrfTokenRepository))
       .securityContext(context -> context.securityContextRepository(contextRepository))
       .authorizeHttpRequests(authorize -> authorize
-        .requestMatchers("/api/auth/csrf", "/api/auth/login", "/actuator/health/**").permitAll()
+        .requestMatchers(
+          "/api/auth/csrf",
+          "/api/auth/login",
+          "/api/auth/register",
+          "/api/auth/registration",
+          "/actuator/health/**"
+        ).permitAll()
         .anyRequest().authenticated()
       )
       .exceptionHandling(errors -> errors.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))

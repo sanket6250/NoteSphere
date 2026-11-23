@@ -1,5 +1,6 @@
 package com.notesphere.config;
 
+import com.notesphere.auth.UserAccountService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.AfterEach;
@@ -27,8 +28,14 @@ import static org.mockito.Mockito.when;
 class AuthControllerTest {
   private final AuthenticationManager authenticationManager = mock(AuthenticationManager.class);
   private final SecurityContextRepository contextRepository = mock(SecurityContextRepository.class);
+  private final UserAccountService userAccountService = mock(UserAccountService.class);
   private final LoginAttemptThrottle throttle = new LoginAttemptThrottle();
-  private final AuthController controller = new AuthController(authenticationManager, contextRepository, throttle);
+  private final AuthController controller = new AuthController(
+    authenticationManager,
+    contextRepository,
+    throttle,
+    userAccountService
+  );
 
   @AfterEach
   void clearContext() {
@@ -36,7 +43,7 @@ class AuthControllerTest {
   }
 
   @Test
-  void successfulConfiguredLoginCreatesAndPersistsSession() {
+  void successfulDatabaseLoginCreatesAndPersistsSession() {
     HttpServletRequest request = requestFrom("192.0.2.10");
     HttpServletResponse response = mock(HttpServletResponse.class);
     when(request.getSession(true)).thenReturn(mock(jakarta.servlet.http.HttpSession.class));
@@ -98,6 +105,32 @@ class AuthControllerTest {
 
     assertEquals(HttpStatus.TOO_MANY_REQUESTS, blocked.getStatusCode());
     verify(authenticationManager, times(5)).authenticate(any(UsernamePasswordAuthenticationToken.class));
+  }
+
+  @Test
+  void registrationCreatesAndAuthenticatesTheOnlyAccount() {
+    HttpServletRequest request = requestFrom("192.0.2.13");
+    when(request.getSession(true)).thenReturn(mock(jakarta.servlet.http.HttpSession.class));
+    when(userAccountService.register("NewUser", "New@Example.com", "a-very-long-password"))
+      .thenReturn("newuser");
+    Authentication createdAuthentication = UsernamePasswordAuthenticationToken.authenticated(
+      "newuser",
+      null,
+      AuthorityUtils.createAuthorityList("ROLE_USER")
+    );
+    when(authenticationManager.authenticate(any(UsernamePasswordAuthenticationToken.class)))
+      .thenReturn(createdAuthentication);
+
+    var response = controller.register(
+      new AuthController.RegistrationRequest("NewUser", "New@Example.com", "a-very-long-password"),
+      request,
+      mock(HttpServletResponse.class)
+    );
+
+    assertEquals(HttpStatus.CREATED, response.getStatusCode());
+    assertEquals(Map.of("username", "newuser"), response.getBody());
+    assertEquals("newuser", SecurityContextHolder.getContext().getAuthentication().getName());
+    verify(userAccountService).register("NewUser", "New@Example.com", "a-very-long-password");
   }
 
   private static HttpServletRequest requestFrom(String address) {

@@ -1,13 +1,13 @@
 # Deploy NoteSphere with Coolify
 
-This repository contains `compose.coolify.yaml` for the production topology. It does not deploy itself, create a domain, or open a firewall. API routes require the configured single-user login; per-user data isolation is not implemented.
+This repository contains `compose.coolify.yaml` for the production topology. It does not deploy itself, create a domain, or open a firewall. API routes require the single PostgreSQL-backed account; the account can access the existing shared workspace.
 
 ## Prerequisites
 
 - Coolify Community Edition installed on the intended Ubuntu host.
 - Coolify's `coolify` proxy network present.
 - A private Git repository containing this project, or another source Coolify can access. Do not make a repository public to simplify deployment.
-- Unique generated database and application-login credentials entered in Coolify's secret environment-variable UI.
+- Unique generated database credentials entered in Coolify's secret environment-variable UI.
 - A backup of any source database and attachments that must be migrated.
 
 ## Add the Compose project
@@ -22,8 +22,6 @@ This repository contains `compose.coolify.yaml` for the production topology. It 
    - `POSTGRES_PASSWORD`
    - `APP_DB_USER`
    - `APP_DB_PASSWORD`
-   - `APP_AUTH_USERNAME`
-   - `APP_AUTH_PASSWORD`
 
    Optional: `APP_MAX_ARCHIVE_SIZE` (defaults to `260MB`), `APP_MAX_UPLOAD_SIZE` (defaults to `25MB`), and `APP_CORS_ALLOWED_ORIGINS` (leave empty for same-origin access). The Compose file sets service URLs internally; do not enter a public backend URL or publish database ports.
 
@@ -35,7 +33,7 @@ The deployment uses two isolated internal networks: PostgreSQL/backend share the
 
 ## Private-first access
 
-No public hostname is assigned by the Compose file. Configure a unique strong shared login and HTTPS before routing public traffic. The single account can access all workspace data; do not share its credentials.
+No public hostname is assigned by the Compose file. Create the single application account and verify login/logout before routing public traffic. The account can access the existing workspace data; do not share its credentials.
 
 Then follow [DOMAIN_AND_HTTPS_SETUP.md](./DOMAIN_AND_HTTPS_SETUP.md).
 

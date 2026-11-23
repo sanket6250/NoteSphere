@@ -14,14 +14,14 @@ NoteSphere is a notes workspace with a React + TipTap editor, Spring Boot REST A
 - Individual note and folder ZIP export/import, including editor content, metadata, referenced attachment bytes, and preserved folder hierarchy.
 - Explicit conflict choices for imports: override existing content after confirmation, create a uniquely named copy, or cancel.
 - Attachment uploads stored as PostgreSQL BYTEA; images and PDFs can be previewed, and other files can be downloaded.
-- Single-user Spring Security login with session cookies and CSRF protection for API mutations.
+- Database-backed single-account Spring Security login with BCrypt password hashes, session cookies, and CSRF protection for API mutations.
 - PostgreSQL schema migrations managed with Flyway.
 - Local Docker Compose setup for the frontend, API, and database.
 - Backend health endpoint at `/actuator/health`.
 
 ## Important scope and security notice
 
-This is a runnable foundation/MVP scaffold, **not a production-ready enterprise product**. The API requires the configured single-user login, but user isolation, workspace permissions, comments, version history, audit trails, malware scanning, automated CI, and production TLS are not implemented. Do not share the login or expose the service without HTTPS and appropriate operational controls.
+This is a runnable foundation/MVP scaffold, **not a production-ready enterprise product**. The API requires the one PostgreSQL-backed account, but multi-user isolation, workspace permissions, comments, version history, audit trails, malware scanning, automated CI, and production TLS are not implemented. Do not share the login or expose the service without HTTPS and appropriate operational controls.
 
 ## Prerequisites
 
@@ -43,7 +43,7 @@ This is a runnable foundation/MVP scaffold, **not a production-ready enterprise 
    ```bash
    cp .env.example .env
    ```
-3. Edit `.env` and replace every `CHANGE_ME` value with a unique value before starting. Configure one `APP_AUTH_USERNAME` and an `APP_AUTH_PASSWORD` of at least 12 characters; there is no fallback or master password. The frontend and local development ports bind to loopback only. `APP_MAX_ARCHIVE_SIZE` sets the import and expanded ZIP limit (default `260MB`); `APP_MAX_UPLOAD_SIZE` sets the individual-file limit (default `25MB`). `APP_CORS_ALLOWED_ORIGINS` is only needed when the browser and API use different origins; leave it blank for the same-origin Docker setup.
+3. Edit `.env` and replace every `CHANGE_ME` value with a unique value before starting. The first visitor creates the single application account in the browser; subsequent public registration is closed. The frontend and local development ports bind to loopback only. `APP_MAX_ARCHIVE_SIZE` sets the import and expanded ZIP limit (default `260MB`); `APP_MAX_UPLOAD_SIZE` sets the individual-file limit (default `25MB`). `APP_CORS_ALLOWED_ORIGINS` is only needed when the browser and API use different origins; leave it blank for the same-origin Docker setup.
 4. Build and start everything:
    ```bash
    docker compose up --build -d
@@ -101,7 +101,9 @@ Do not use volume-removal or Docker prune commands on this project; database and
 - `POST /api/notes/import?strategy=COPY|OVERRIDE` — import a note as a uniquely named copy or replace the matching note
 - `GET /api/dashboard` — live workspace totals and chart data
 - `GET /api/auth/csrf` — obtain a CSRF token
-- `POST /api/auth/login` — create the single-user session
+- `GET /api/auth/registration` — check whether first-account registration is available
+- `POST /api/auth/register` — create the one account and its session (only while no account exists)
+- `POST /api/auth/login` — create a session using username/email and password
 - `GET /api/auth/session` — verify the current session
 - `POST /api/auth/logout` — invalidate the current session
 - `POST /api/attachments?noteId=...` — multipart upload, field name `file`, max 25 MB
@@ -156,8 +158,6 @@ With the Compose database running, JDK 25 and Maven 3.9+ installed, run the test
 docker compose up -d postgres
 $env:SPRING_DATASOURCE_URL = 'jdbc:postgresql://localhost:5432/notesphere'
 # Set SPRING_DATASOURCE_USERNAME and SPRING_DATASOURCE_PASSWORD from .env.
-$env:APP_AUTH_USERNAME = 'your-local-login'
-$env:APP_AUTH_PASSWORD = 'a-local-only-password'
 cd backend
 mvn -q test
 ```
@@ -168,7 +168,7 @@ The focused archive validation tests can be run with `mvn -q -Dtest=FolderArchiv
 
 The production-oriented Compose definition is `compose.coolify.yaml`. It keeps PostgreSQL and the backend off host-published ports, attaches only the frontend to Coolify's proxy, and stores attachments in PostgreSQL. The legacy object-storage volume name is retained for safe migration and is not mounted by the application.
 
-The API requires the configured single-user login; data is not isolated between users because only one shared account is supported. Use a strong password and HTTPS for remote access.
+The API requires the one PostgreSQL-backed account; all existing workspace data remains available to that account. Public registration closes after its creation. Use HTTPS for remote access.
 
 Start with [docs/ORACLE_CLOUD_SETUP.md](docs/ORACLE_CLOUD_SETUP.md), [docs/UBUNTU_SERVER_SETUP.md](docs/UBUNTU_SERVER_SETUP.md), and [docs/COOLIFY_INSTALLATION.md](docs/COOLIFY_INSTALLATION.md). Then follow [docs/NOTESPHERE_DEPLOYMENT.md](docs/NOTESPHERE_DEPLOYMENT.md). All requested deployment, DNS/TLS, environment, backup/restore, security and troubleshooting guides are under `docs/`.
 

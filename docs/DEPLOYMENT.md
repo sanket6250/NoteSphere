@@ -14,4 +14,4 @@ The Oracle Cloud Always Free + Coolify deployment target is documented as a set 
 10. [Troubleshooting](./TROUBLESHOOTING.md)
 11. [Architecture and network boundaries](./DEPLOYMENT_ARCHITECTURE.md)
 
-The production stack is `../compose.coolify.yaml`. It does not publish database or backend ports. The API requires a configured single-user login; per-user tenant isolation is not implemented. No OCI resources or external account settings are changed by these instructions.
+The production stack is `../compose.coolify.yaml`. It does not publish database or backend ports. The API requires the single PostgreSQL-backed account, and the first account is registered after deployment. No OCI resources or external account settings are changed by these instructions.

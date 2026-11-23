@@ -42,6 +42,41 @@
   font: inherit;
 }
 
+.auth-password-field {
+  display: flex;
+  align-items: center;
+  border: 1px solid #d9dde5;
+  border-radius: 8px;
+}
+
+.auth-password-field input {
+  flex: 1;
+  border: 0;
+  outline: 0;
+}
+
+.auth-password-toggle {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: #687080;
+  cursor: pointer;
+}
+
+.auth-mode-switch {
+  justify-self: center;
+  padding: 4px 8px;
+  border: 0;
+  background: transparent;
+  color: #5143c3;
+  font: inherit;
+  cursor: pointer;
+}
+
 .auth-sign-out {
   position: fixed;
   z-index: 20;

@@ -2,9 +2,9 @@
 
 ## Application access control
 
-- [x] Protect API routes with the configured single-user Spring Security session login and CSRF protection.
-- [ ] Configure a unique high-entropy `APP_AUTH_PASSWORD`, require HTTPS for remote access, and verify login/logout behavior before public exposure.
-- [ ] Scope notes, folders, and attachments to authenticated owners/workspaces before adding multiple users. Current workspace data is global to the one shared account.
+- [x] Protect API routes with the PostgreSQL-backed single-account Spring Security session login and CSRF protection.
+- [ ] Create the first account, require HTTPS for remote access, and verify login/logout behavior before public exposure.
+- [x] Keep registration database-limited to one account; existing workspace data remains available to that account.
 - [ ] Do not treat HTTPS as access control; retain network restrictions and monitor authentication failures.
 
 ## OCI and host

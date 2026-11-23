@@ -1,24 +1,42 @@
 import React, { useEffect, useState } from 'react';
-import { getSession, signIn, signOut } from './api';
+import { Eye, EyeOff } from 'lucide-react';
+import { getRegistrationStatus, getSession, registerAccount, signIn, signOut } from './api';
 
 export default function AuthGate({ children }) {
   const [session, setSession] = useState(undefined);
+  const [registrationAvailable, setRegistrationAvailable] = useState(false);
+  const [mode, setMode] = useState('login');
   const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [passwordVisible, setPasswordVisible] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
     let active = true;
     const handleUnauthorized = () => setSession(null);
+    const handleRegistrationClosed = () => {
+      setRegistrationAvailable(false);
+      setMode('login');
+    };
     window.addEventListener('notesphere:unauthorized', handleUnauthorized);
+    window.addEventListener('notesphere:registration-closed', handleRegistrationClosed);
     getSession()
-      .then((current) => { if (active) setSession(current); })
+      .then(async (current) => {
+        if (!active) return;
+        setSession(current);
+        if (!current) {
+          const status = await getRegistrationStatus();
+          if (active) setRegistrationAvailable(status.available);
+        }
+      })
       .catch((failure) => { if (active) setError(failure.message); })
       .finally(() => { if (active) setSession((current) => current === undefined ? null : current); });
     return () => {
       active = false;
       window.removeEventListener('notesphere:unauthorized', handleUnauthorized);
+      window.removeEventListener('notesphere:registration-closed', handleRegistrationClosed);
     };
   }, []);
 
@@ -27,8 +45,12 @@ export default function AuthGate({ children }) {
     setError('');
     setBusy(true);
     try {
-      const session = await signIn(username, password);
-      setSession(session);
+      const nextSession = mode === 'register'
+        ? await registerAccount({ username, email, password })
+        : await signIn(username, password);
+      setSession(nextSession);
+      setRegistrationAvailable(false);
+      setMode('login');
       setPassword('');
     } catch (failure) {
       setPassword('');
@@ -56,33 +78,77 @@ export default function AuthGate({ children }) {
   if (session) {
     return typeof children === 'function' ? children({ signOut: logout }) : children;
   }
+  const registering = mode === 'register' && registrationAvailable;
   return (
     <main className="auth-screen">
       <form className="auth-card" onSubmit={submit}>
         <span className="dialog-eyebrow">NOTESPHERE</span>
-        <h1>Sign in</h1>
-        <p>Use your configured NoteSphere account to continue.</p>
+        <h1>{registering ? 'Create your account' : 'Sign in'}</h1>
+        <p>{registering ? 'Set up the single account for this NoteSphere workspace.' : 'Sign in to open your private workspace.'}</p>
         {error && <div className="archive-error" role="alert">{error}</div>}
-        <label htmlFor="auth-username">Username</label>
+        <label htmlFor="auth-username">{registering ? 'Username' : 'Username or email'}</label>
         <input
           id="auth-username"
           autoComplete="username"
           value={username}
           onChange={(event) => setUsername(event.target.value)}
+          minLength={registering ? 3 : undefined}
+          maxLength={registering ? 32 : 254}
+          pattern={registering ? '[A-Za-z0-9._-]+' : undefined}
           required
         />
+        {registering && (
+          <>
+            <label htmlFor="auth-email">Email</label>
+            <input
+              id="auth-email"
+              type="email"
+              autoComplete="email"
+              maxLength={254}
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              required
+            />
+          </>
+        )}
         <label htmlFor="auth-password">Password</label>
-        <input
-          id="auth-password"
-          type="password"
-          autoComplete="current-password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          required
-        />
+        <div className="auth-password-field">
+          <input
+            id="auth-password"
+            type={passwordVisible ? 'text' : 'password'}
+            autoComplete={registering ? 'new-password' : 'current-password'}
+            minLength={registering ? 12 : undefined}
+            maxLength={registering ? 72 : undefined}
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            required
+          />
+          <button
+            className="auth-password-toggle"
+            type="button"
+            aria-label={passwordVisible ? 'Hide password' : 'Show password'}
+            onClick={() => setPasswordVisible((visible) => !visible)}
+          >
+            {passwordVisible ? <EyeOff size={17} /> : <Eye size={17} />}
+          </button>
+        </div>
         <button className="dialog-submit" type="submit" disabled={busy}>
-          {busy ? 'Signing in…' : 'Sign in'}
+          {busy ? (registering ? 'Creating account…' : 'Signing in…') : (registering ? 'Create account' : 'Sign in')}
         </button>
+        {registrationAvailable && (
+          <button
+            className="auth-mode-switch"
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              setError('');
+              setPassword('');
+              setMode(registering ? 'login' : 'register');
+            }}
+          >
+            {registering ? 'Already have an account? Sign in' : 'Create the first account'}
+          </button>
+        )}
       </form>
     </main>
   );

@@ -13,8 +13,6 @@ For Coolify, enter runtime values in the Compose resource's Environment Variable
 | `POSTGRES_PASSWORD` | Yes | PostgreSQL initialization and health check | Generate a unique long random administrator secret; do not reuse other credentials. |
 | `APP_DB_USER` | Yes | PostgreSQL initialization and backend | Non-superuser application role, created on first database initialization for Flyway and application access; must differ from `POSTGRES_USER`. |
 | `APP_DB_PASSWORD` | Yes | PostgreSQL initialization and backend | Generate a separate unique long random application secret. Changing either app-role value does not update an already initialized database; rotate the role inside PostgreSQL before updating Coolify. |
-| `APP_AUTH_USERNAME` | Yes | Backend login | Configure the one allowed, non-blank username (maximum 128 characters). |
-| `APP_AUTH_PASSWORD` | Yes | Backend login | Configure a unique password of at least 12 characters and store it as a Coolify secret. The application hashes it in memory at startup; it is never persisted or logged. |
 | `APP_MAX_ARCHIVE_SIZE` | No | Backend | Defaults to `260MB`; keep below Nginx's 272 MB request cap. Individual uploads remain limited by the API to 25 MB. |
 | `APP_MAX_UPLOAD_SIZE` | No | Backend | Defaults to `25MB`; the backend rejects larger individual files. |
 | `APP_CORS_ALLOWED_ORIGINS` | No | Backend | Leave blank for same-origin routing. In production, configure at most one exact HTTPS frontend origin, without a path; wildcards and origin lists are rejected. |
@@ -30,4 +28,4 @@ PostgreSQL backup requires `PG_CONTAINER`, `PG_USER`, `PG_DATABASE`, and `BACKUP
 
 Optional OCI Object Storage off-site upload requires `OCI_NAMESPACE`, `OCI_REGION`, `OCI_BACKUP_BUCKET`, `OCI_ACCESS_KEY_ID`, and `OCI_SECRET_ACCESS_KEY`. These credentials are for optional off-site backup copies only, not for the live application. Create the OCI bucket manually and confirm its region and Always Free quota first.
 
-Production profile configuration has no fallback datasource or login credentials. Missing or invalid authentication settings cause startup failure rather than a silent default. Authentication uses only the configured username and password; there is no master-password or alternate login path. Login attempts are limited per client address in process memory, so the counter resets on restart and is not shared across multiple backend instances.
+Authentication uses one account registered in PostgreSQL after deployment. Registration is public only while the account table is empty; a database uniqueness constraint and transaction prevent multiple accounts. Passwords are stored as BCrypt hashes. Login attempts are limited per client address in process memory, so the counter resets on restart and is not shared across multiple backend instances.

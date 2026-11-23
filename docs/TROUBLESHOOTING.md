@@ -36,7 +36,7 @@ The `APP_DB_USER` role is created only when PostgreSQL initializes an empty data
 
 ## Login or CSRF errors
 
-Confirm `APP_AUTH_USERNAME` and `APP_AUTH_PASSWORD` are set in Coolify and the frontend uses the same-origin API. Refresh the browser session after changing credentials. The frontend fetches CSRF tokens before mutations; do not disable CSRF protection as a workaround.
+Confirm the single account has been created and the frontend uses the same-origin API. If registration is closed, sign in with the account already stored in PostgreSQL. The frontend fetches CSRF tokens before mutations; do not disable CSRF protection as a workaround.
 
 ## Frontend loads but API calls fail
 

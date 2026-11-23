@@ -56,6 +56,42 @@ export async function signIn(username, password) {
   return session;
 }
 
+export async function registerAccount({ username, email, password }) {
+  const response = await apiFetch(`${API}/api/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, email, password }),
+  });
+  if (!response.ok) {
+    let message = 'Account creation failed.';
+    if (response.status === 409) {
+      message = 'An account already exists. Sign in instead.';
+      window.dispatchEvent(new Event('notesphere:registration-closed'));
+    } else {
+      try {
+        const body = await response.json();
+        message = body.message || body.detail || message;
+      } catch {
+        message = 'Account creation failed.';
+      }
+    }
+    throw new Error(message);
+  }
+  const session = await response.json();
+  csrfState = undefined;
+  await loadCsrf();
+  return session;
+}
+
+export async function getRegistrationStatus() {
+  const response = await fetch(`${API}/api/auth/registration`, {
+    credentials: 'include',
+    cache: 'no-store',
+  });
+  if (!response.ok) throw new Error('Could not check account setup status.');
+  return response.json();
+}
+
 export async function signOut() {
   try {
     const response = await apiFetch(`${API}/api/auth/logout`, { method: 'POST' });

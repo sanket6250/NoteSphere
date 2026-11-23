@@ -30,7 +30,7 @@ The production Compose file publishes no host ports. Coolify's reverse proxy han
 
 - Flyway adds the `attachments` table with PostgreSQL `BYTEA` file data and a `note_attachments` relation; existing note/folder migrations are unchanged.
 - Attachment metadata queries omit `file_data`. Individual downloads read one bounded file at a time; upload size defaults to 25 MB.
-- The backend protects API routes with a single configured Spring Security account, session cookie, and CSRF tokens. There is no per-user ownership or workspace separation.
+- The backend protects API routes with one PostgreSQL-backed Spring Security account, a BCrypt password hash, an HTTP session cookie, and CSRF tokens. Existing notes, folders, and BYTEA attachments remain in the shared single-user workspace and are available after first account registration.
 - Note and folder ZIP exports include actual attachment bytes. Imports restore new rows and note links transactionally; note deletion/override removes unreferenced attachment bytes.
 - PostgreSQL custom-format backups contain notes, metadata, and attachment content together. Optional OCI storage is only a destination for off-site database backups.
 - `notesphere-production-postgres-data` is explicitly named and persistent. `notesphere-production-object-data` remains declared but unused by application services so legacy data is not removed during cutover.
@@ -42,7 +42,7 @@ The old MinIO/RustFS service must remain available until `scripts/migrate-minio-
 
 ## Public access and security boundary
 
-The API is authenticated, but the shared login grants access to the entire single workspace. Configure a unique strong `APP_AUTH_PASSWORD`, require HTTPS for remote use, and keep PostgreSQL/backend off public networks. Add user/workspace ownership before enabling multiple accounts.
+The single database account grants access to the entire workspace. Require HTTPS for remote use and keep PostgreSQL/backend off public networks. This design does not support multiple accounts or per-user workspaces.
 
 ## Oracle cost model
 
