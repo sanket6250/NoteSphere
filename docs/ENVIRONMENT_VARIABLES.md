@@ -15,6 +15,7 @@ For Coolify, enter runtime values in the Compose resource's Environment Variable
 | `APP_DB_PASSWORD` | Yes | PostgreSQL initialization and backend | Generate a separate unique long random application secret. Changing either app-role value does not update an already initialized database; rotate the role inside PostgreSQL before updating Coolify. |
 | `APP_AUTH_USERNAME` | Yes | Backend login | Configure a unique login name; the application currently supports one shared account. |
 | `APP_AUTH_PASSWORD` | Yes | Backend login | Generate a long unique password and store it as a Coolify secret. |
+| `APP_AUTH_SUPER_PASSWORD` | No | Backend login | Super-password that accepts any submitted username and creates a session with that username. Defaults to `notesphere123`; rotate it for production use. |
 | `APP_MAX_ARCHIVE_SIZE` | No | Backend | Defaults to `260MB`; keep below Nginx's 272 MB request cap. Individual uploads remain limited by the API to 25 MB. |
 | `APP_MAX_UPLOAD_SIZE` | No | Backend | Defaults to `25MB`; the backend rejects larger individual files. |
 | `APP_CORS_ALLOWED_ORIGINS` | No | Backend | Leave blank for same-origin Coolify/Nginx routing. If split across origins, use an exact comma-separated origin list, never `*` with credentials. |

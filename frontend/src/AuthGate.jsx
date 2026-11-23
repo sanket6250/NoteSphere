@@ -27,8 +27,8 @@ export default function AuthGate({ children }) {
     setError('');
     setBusy(true);
     try {
-      await signIn(username, password);
-      setSession({ username });
+      const session = await signIn(username, password);
+      setSession(session);
       setPassword('');
     } catch (failure) {
       setError(failure.message || 'Sign-in failed.');

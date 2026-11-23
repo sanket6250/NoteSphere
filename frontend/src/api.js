@@ -49,8 +49,10 @@ export async function signIn(username, password) {
   if (!response.ok) {
     throw new Error(response.status === 401 ? 'Incorrect username or password.' : 'Sign-in failed.');
   }
+  const session = await response.json();
   csrfState = undefined;
   await loadCsrf();
+  return session;
 }
 
 export async function signOut() {
