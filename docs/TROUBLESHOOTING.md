@@ -42,6 +42,12 @@ Confirm the single account has been created and the frontend uses the same-origi
 
 Confirm Coolify routes the domain to `frontend` internal port 80. The Nginx `backend` hostname resolves only through the private API network; `backend` must remain attached to it. Keep browser calls same-origin and leave CORS blank unless the deployment is intentionally split across origins.
 
+For a split frontend/backend deployment, set `VITE_API_BASE_URL` on the frontend Render service to the backend origin (for example, `https://notesphere-mzsm.onrender.com`). The frontend Dockerfile passes this public URL into the Vite build; save the setting with **rebuild and deploy**, not runtime redeploy only. It may include a trailing `/api`, which the client strips before appending API paths. A registration request should reach `/api/auth/register`, not `/api/api/auth/register`.
+
+## Registration returns 401 before reaching the controller
+
+The backend permits `/api/auth/register` and `/api/auth/login` without a session. Check the browser's Network panel for the exact request URL, then check backend logs for `Authentication request entered security chain`, the resulting status, and `Registration request reached controller`. A duplicated `/api` path falls through to the protected API matcher and can return 401 without reaching the controller. If no security-chain entry is logged, confirm the frontend points at this backend deployment and that both services were rebuilt from the same revision. Do not enable broad security TRACE logging or log request bodies and headers.
+
 ## Let's Encrypt cannot issue a certificate
 
 Check DNS A/AAAA records, Coolify proxy status, and inbound TCP 80/443. HTTP-01 requires public port 80 to reach Coolify. If the app must remain private, do not open it publicly just to issue a certificate; use an approved DNS-01 integration or keep the deployment private until access control is ready.

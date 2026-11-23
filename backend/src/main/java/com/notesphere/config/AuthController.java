@@ -8,6 +8,8 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -35,6 +37,8 @@ import java.util.Locale;
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
+  private static final Logger logger = LoggerFactory.getLogger(AuthController.class);
+
   private final AuthenticationManager authenticationManager;
   private final SecurityContextRepository contextRepository;
   private final LoginAttemptThrottle loginAttemptThrottle;
@@ -73,6 +77,7 @@ public class AuthController {
     HttpServletRequest request,
     HttpServletResponse response
   ) {
+    logger.info("Login request reached controller");
     String username = requestBody.username().trim().toLowerCase(Locale.ROOT);
     String clientAddress = request.getRemoteAddr();
     if (loginAttemptThrottle.isBlocked(clientAddress)) {
@@ -100,6 +105,7 @@ public class AuthController {
     HttpServletRequest request,
     HttpServletResponse response
   ) {
+    logger.info("Registration request reached controller");
     String username;
     try {
       username = userAccountService.register(

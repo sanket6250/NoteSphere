@@ -17,8 +17,9 @@ import {
 } from 'lucide-react';
 import { DialogFrame, useDialogs } from './OverlaySystem';
 import { csrfHeader } from './api';
+import { API_BASE_URL } from './apiBaseUrl';
 
-const API = import.meta.env.VITE_API_BASE_URL || '';
+const API = API_BASE_URL;
 
 async function uploadWithProgress(url, file, onProgress) {
   const headers = await csrfHeader();

@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Archive, Clock3, FileText, Folder, RefreshCw, Sparkles } from 'lucide-react';
 import { apiFetch } from './api';
+import { API_BASE_URL } from './apiBaseUrl';
 
-const API = import.meta.env.VITE_API_BASE_URL || '';
+const API = API_BASE_URL;
 
 function formatDate(value) {
   if (!value) return 'Recently';

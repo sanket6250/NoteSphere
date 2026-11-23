@@ -14,6 +14,7 @@ import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfFilter;
 import org.springframework.http.HttpStatus;
 
 @Configuration
@@ -66,6 +67,7 @@ public class SecurityConfig {
       .requestCache(cache -> cache.disable())
       .formLogin(form -> form.disable())
       .httpBasic(basic -> basic.disable());
+    http.addFilterBefore(new AuthRequestDiagnosticFilter(), CsrfFilter.class);
     return http.build();
   }
 }

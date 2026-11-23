@@ -1,9 +1,10 @@
-const API = import.meta.env.VITE_API_BASE_URL || '';
+import { API_BASE_URL } from './apiBaseUrl.js';
+
 let csrfState;
 
 async function loadCsrf() {
   if (!csrfState) {
-    csrfState = fetch(`${API}/api/auth/csrf`, {
+    csrfState = fetch(`${API_BASE_URL}/api/auth/csrf`, {
       credentials: 'include',
       cache: 'no-store',
     }).then(async (response) => {
@@ -25,6 +26,8 @@ export async function csrfHeader() {
 export async function apiFetch(url, options = {}) {
   const method = (options.method || 'GET').toUpperCase();
   const headers = new Headers(options.headers || {});
+  const publicAuthEndpoint = url.endsWith('/api/auth/register') || url.endsWith('/api/auth/login');
+  if (publicAuthEndpoint) headers.delete('Authorization');
   if (!['GET', 'HEAD', 'OPTIONS', 'TRACE'].includes(method)) {
     Object.entries(await csrfHeader()).forEach(([name, value]) => headers.set(name, value));
   }
@@ -32,6 +35,7 @@ export async function apiFetch(url, options = {}) {
   if (
     response.status === 401
     && !url.endsWith('/api/auth/login')
+    && !url.endsWith('/api/auth/register')
     && !url.endsWith('/api/auth/session')
     && typeof window !== 'undefined'
   ) {
@@ -41,7 +45,7 @@ export async function apiFetch(url, options = {}) {
 }
 
 export async function signIn(username, password) {
-  const response = await apiFetch(`${API}/api/auth/login`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password }),
@@ -57,7 +61,7 @@ export async function signIn(username, password) {
 }
 
 export async function registerAccount({ username, email, password }) {
-  const response = await apiFetch(`${API}/api/auth/register`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, email, password }),
@@ -84,7 +88,7 @@ export async function registerAccount({ username, email, password }) {
 }
 
 export async function getRegistrationStatus() {
-  const response = await fetch(`${API}/api/auth/registration`, {
+  const response = await fetch(`${API_BASE_URL}/api/auth/registration`, {
     credentials: 'include',
     cache: 'no-store',
   });
@@ -94,7 +98,7 @@ export async function getRegistrationStatus() {
 
 export async function signOut() {
   try {
-    const response = await apiFetch(`${API}/api/auth/logout`, { method: 'POST' });
+    const response = await apiFetch(`${API_BASE_URL}/api/auth/logout`, { method: 'POST' });
     if (!response.ok && response.status !== 401) throw new Error('Sign-out failed.');
   } finally {
     csrfState = undefined;
@@ -102,7 +106,7 @@ export async function signOut() {
 }
 
 export async function getSession() {
-  const response = await apiFetch(`${API}/api/auth/session`);
+  const response = await apiFetch(`${API_BASE_URL}/api/auth/session`);
   if (response.status === 401) return null;
   if (!response.ok) throw new Error('Could not verify the current session.');
   return response.json();

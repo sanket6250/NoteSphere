@@ -55,9 +55,10 @@ import { downloadAttachment } from './attachmentDownload';
 import { PortalMenu, useDialogs, useManagedMenu } from './OverlaySystem';
 import AuthGate from './AuthGate';
 import { apiFetch } from './api';
+import { API_BASE_URL } from './apiBaseUrl';
 import { exportWordDocument, importDocumentFile } from './documentTransfer';
 
-const API = import.meta.env.VITE_API_BASE_URL || '';
+const API = API_BASE_URL;
 const EMPTY_CONTENT = '<p></p>';
 const MAX_FILE_SIZE = 25 * 1024 * 1024;
 const COUNTABLE_BLOCK_TAGS = new Set([

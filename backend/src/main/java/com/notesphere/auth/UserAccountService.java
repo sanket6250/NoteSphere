@@ -1,6 +1,8 @@
 package com.notesphere.auth;
 
 import org.springframework.dao.DataIntegrityViolationException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -12,6 +14,7 @@ import java.util.Locale;
 
 @Service
 public class UserAccountService implements UserDetailsService {
+  private static final Logger logger = LoggerFactory.getLogger(UserAccountService.class);
   private static final short SINGLE_ACCOUNT_SLOT = 1;
   private static final int MAX_BCRYPT_PASSWORD_BYTES = 72;
 
@@ -30,8 +33,13 @@ public class UserAccountService implements UserDetailsService {
 
   @Transactional
   public String register(String username, String email, String password) {
-    if (!isRegistrationAvailable()) throw new RegistrationClosedException();
+    logger.info("Registration service processing first-account request");
+    if (!isRegistrationAvailable()) {
+      logger.info("Registration rejected because the single-account slot is occupied");
+      throw new RegistrationClosedException();
+    }
     if (password.getBytes(StandardCharsets.UTF_8).length > MAX_BCRYPT_PASSWORD_BYTES) {
+      logger.info("Registration rejected because the password exceeds the supported input length");
       throw new InvalidRegistrationException("Password must be no more than 72 UTF-8 bytes.");
     }
 
@@ -46,8 +54,10 @@ public class UserAccountService implements UserDetailsService {
     try {
       users.saveAndFlush(account);
     } catch (DataIntegrityViolationException exception) {
+      logger.info("Registration rejected by the single-account database constraint");
       throw new RegistrationClosedException();
     }
+    logger.info("First account registration completed");
     return normalizedUsername;
   }
 
