@@ -4,13 +4,11 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
-import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.csrf.CsrfToken;
@@ -29,16 +27,16 @@ import java.util.Map;
 public class AuthController {
   private final AuthenticationManager authenticationManager;
   private final SecurityContextRepository contextRepository;
-  private final String superPassword;
+  private final LoginAttemptThrottle loginAttemptThrottle;
 
   public AuthController(
     AuthenticationManager authenticationManager,
     SecurityContextRepository contextRepository,
-    @Value("${app.auth.super-password:notesphere123}") String superPassword
+    LoginAttemptThrottle loginAttemptThrottle
   ) {
     this.authenticationManager = authenticationManager;
     this.contextRepository = contextRepository;
-    this.superPassword = superPassword;
+    this.loginAttemptThrottle = loginAttemptThrottle;
   }
 
   @GetMapping("/csrf")
@@ -57,25 +55,23 @@ public class AuthController {
     HttpServletRequest request,
     HttpServletResponse response
   ) {
-    Authentication authentication;
     String username = requestBody.username().trim();
-
-    if (superPassword.equals(requestBody.password())) {
-      authentication = UsernamePasswordAuthenticationToken.authenticated(
-        username,
-        null,
-        AuthorityUtils.createAuthorityList("ROLE_USER")
-      );
-    } else {
-      try {
-        authentication = authenticationManager.authenticate(
-          UsernamePasswordAuthenticationToken.unauthenticated(username, requestBody.password())
-        );
-      } catch (AuthenticationException exception) {
-        throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid username or password.");
-      }
+    String clientAddress = request.getRemoteAddr();
+    if (loginAttemptThrottle.isBlocked(clientAddress)) {
+      throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Too many sign-in attempts. Try again later.");
     }
 
+    Authentication authentication;
+    try {
+      authentication = authenticationManager.authenticate(
+        UsernamePasswordAuthenticationToken.unauthenticated(username, requestBody.password())
+      );
+    } catch (AuthenticationException exception) {
+      loginAttemptThrottle.recordFailure(clientAddress);
+      throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid username or password.");
+    }
+
+    loginAttemptThrottle.recordSuccess(clientAddress);
     request.getSession(true);
     request.changeSessionId();
     SecurityContext context = SecurityContextHolder.createEmptyContext();

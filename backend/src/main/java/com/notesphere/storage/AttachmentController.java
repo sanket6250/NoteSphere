@@ -72,7 +72,7 @@ public class AttachmentController {
     }
     boolean showInline = inline && AttachmentService.canRenderInline(metadata.contentType());
     String disposition = ContentDisposition.builder(showInline ? "inline" : "attachment")
-      .filename(metadata.fileName(), StandardCharsets.UTF_8)
+      .filename(metadata.originalFileName(), StandardCharsets.UTF_8)
       .build()
       .toString();
     StreamingResponseBody body = output -> output.write(attachments.read(id));

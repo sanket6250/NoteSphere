@@ -91,9 +91,13 @@ public class AttachmentService {
 
   @Transactional(readOnly = true)
   public byte[] read(UUID id) {
-    getMetadata(id);
-    return attachments.findFileData(id)
+    AttachmentMetadata metadata = getMetadata(id);
+    byte[] data = attachments.findFileData(id)
       .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Attachment not found"));
+    if (data.length != metadata.fileSize()) {
+      throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Stored attachment data is incomplete.");
+    }
+    return data;
   }
 
   @Transactional

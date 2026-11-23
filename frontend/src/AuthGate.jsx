@@ -31,6 +31,7 @@ export default function AuthGate({ children }) {
       setSession(session);
       setPassword('');
     } catch (failure) {
+      setPassword('');
       setError(failure.message || 'Sign-in failed.');
     } finally {
       setBusy(false);

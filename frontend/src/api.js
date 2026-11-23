@@ -47,7 +47,8 @@ export async function signIn(username, password) {
     body: JSON.stringify({ username, password }),
   });
   if (!response.ok) {
-    throw new Error(response.status === 401 ? 'Incorrect username or password.' : 'Sign-in failed.');
+    if (response.status === 429) throw new Error('Too many sign-in attempts. Try again later.');
+    throw new Error(response.status === 401 ? 'Invalid username or password.' : 'Sign-in failed.');
   }
   const session = await response.json();
   csrfState = undefined;
@@ -56,8 +57,12 @@ export async function signIn(username, password) {
 }
 
 export async function signOut() {
-  await apiFetch(`${API}/api/auth/logout`, { method: 'POST' });
-  csrfState = undefined;
+  try {
+    const response = await apiFetch(`${API}/api/auth/logout`, { method: 'POST' });
+    if (!response.ok && response.status !== 401) throw new Error('Sign-out failed.');
+  } finally {
+    csrfState = undefined;
+  }
 }
 
 export async function getSession() {

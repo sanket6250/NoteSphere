@@ -43,7 +43,7 @@ This is a runnable foundation/MVP scaffold, **not a production-ready enterprise 
    ```bash
    cp .env.example .env
    ```
-3. Edit `.env` and replace every `CHANGE_ME` value with a unique random value before starting, including `APP_AUTH_USERNAME` and `APP_AUTH_PASSWORD`. Set `APP_AUTH_SUPER_PASSWORD` to a protected value if `notesphere123` is not desired; this password authenticates any submitted username and creates a session for that username. The frontend and local development ports bind to loopback only. `APP_MAX_ARCHIVE_SIZE` sets the import and expanded ZIP limit (default `260MB`); `APP_MAX_UPLOAD_SIZE` sets the individual-file limit (default `25MB`). `APP_CORS_ALLOWED_ORIGINS` is only needed when the browser and API use different origins; leave it blank for the same-origin Docker setup.
+3. Edit `.env` and replace every `CHANGE_ME` value with a unique value before starting. Configure one `APP_AUTH_USERNAME` and an `APP_AUTH_PASSWORD` of at least 12 characters; there is no fallback or master password. The frontend and local development ports bind to loopback only. `APP_MAX_ARCHIVE_SIZE` sets the import and expanded ZIP limit (default `260MB`); `APP_MAX_UPLOAD_SIZE` sets the individual-file limit (default `25MB`). `APP_CORS_ALLOWED_ORIGINS` is only needed when the browser and API use different origins; leave it blank for the same-origin Docker setup.
 4. Build and start everything:
    ```bash
    docker compose up --build -d

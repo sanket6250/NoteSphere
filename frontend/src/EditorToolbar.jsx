@@ -9,10 +9,13 @@ import {
   Bold,
   Braces,
   Code2,
+  Eye,
   Eraser,
   Highlighter,
+  Home,
   ImagePlus,
   Italic,
+  LayoutGrid,
   Link as LinkIcon,
   List,
   ListChecks,
@@ -27,6 +30,8 @@ import {
   Quote,
   Redo2,
   Search,
+  ShieldCheck,
+  SlidersHorizontal,
   Sigma,
   Smile,
   Strikethrough,
@@ -34,6 +39,7 @@ import {
   Superscript,
   Underline,
   Undo2,
+  X,
 } from 'lucide-react';
 import { BubbleMenu } from '@tiptap/react';
 import { createPortal } from 'react-dom';
@@ -362,6 +368,7 @@ export default function EditorToolbar({
   const [symbolQuery, setSymbolQuery] = useState('');
   const [emojiQuery, setEmojiQuery] = useState('');
   const [activeTab, setActiveTab] = useState('home');
+  const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
   const [formatPainter, setFormatPainter] = useState(null);
   const [repeatFormatPainter, setRepeatFormatPainter] = useState(false);
   const [tableSize, setTableSize] = useState({ rows: 0, cols: 0 });
@@ -566,12 +573,12 @@ export default function EditorToolbar({
     <div className={`editor-toolbar editor-toolbar-tab-${activeTab}`} role="toolbar" aria-label="Text formatting">
       <div className="editor-ribbon-tabs" role="tablist" aria-label="Editor tools">
         {[
-          ['home', 'Home'],
-          ['insert', 'Insert'],
-          ['layout', 'Layout'],
-          ['review', 'Review'],
-          ['view', 'View'],
-        ].map(([tab, label]) => (
+          ['home', 'Home', Home],
+          ['insert', 'Insert', ImagePlus],
+          ['layout', 'Layout', LayoutGrid],
+          ['review', 'Review', ShieldCheck],
+          ['view', 'View', Eye],
+        ].map(([tab, label, TabIcon]) => (
           <button
             type="button"
             role="tab"
@@ -585,12 +592,114 @@ export default function EditorToolbar({
               formattingMenu.close();
               insertMenu.close();
               setActiveTab(tab);
+              setMobilePanelOpen(false);
             }}
           >
+            <TabIcon size={15} strokeWidth={2.2} />
             {label}
           </button>
         ))}
       </div>
+      <div className="mobile-format-toolbar" aria-label="Compact formatting toolbar">
+        <ToolbarButton
+          label="Bold"
+          shortcut="Ctrl/Cmd+B"
+          active={editor.isActive('bold')}
+          onClick={command(() => editor.chain().focus().toggleBold())}
+        >
+          <Bold size={17} />
+        </ToolbarButton>
+        <ToolbarButton
+          label="Italic"
+          shortcut="Ctrl/Cmd+I"
+          active={editor.isActive('italic')}
+          onClick={command(() => editor.chain().focus().toggleItalic())}
+        >
+          <Italic size={17} />
+        </ToolbarButton>
+        <ToolbarButton
+          label="Underline"
+          shortcut="Ctrl/Cmd+U"
+          active={editor.isActive('underline')}
+          onClick={command(() => editor.chain().focus().toggleUnderline())}
+        >
+          <Underline size={17} />
+        </ToolbarButton>
+        <ToolbarButton
+          label="Bullet list"
+          active={editor.isActive('bulletList')}
+          onClick={command(() => editor.chain().focus().toggleBulletList())}
+        >
+          <List size={18} />
+        </ToolbarButton>
+        <ToolbarButton
+          label="Numbered list"
+          active={editor.isActive('orderedList')}
+          onClick={command(() => editor.chain().focus().toggleOrderedList())}
+        >
+          <ListOrdered size={18} />
+        </ToolbarButton>
+        <ToolbarButton label="Undo" disabled={!editor.can().undo()} onClick={command(() => editor.chain().focus().undo())}>
+          <Undo2 size={17} />
+        </ToolbarButton>
+        <ToolbarButton label="Redo" disabled={!editor.can().redo()} onClick={command(() => editor.chain().focus().redo())}>
+          <Redo2 size={17} />
+        </ToolbarButton>
+        <button
+          type="button"
+          className={`mobile-format-toggle${mobilePanelOpen ? ' is-active' : ''}`}
+          aria-label={mobilePanelOpen ? 'Close formatting panel' : 'Open formatting panel'}
+          aria-expanded={mobilePanelOpen}
+          onClick={() => setMobilePanelOpen((open) => !open)}
+        >
+          {mobilePanelOpen ? <X size={18} /> : <SlidersHorizontal size={18} />}
+        </button>
+      </div>
+      {mobilePanelOpen && (
+        <div className="mobile-format-panel" role="dialog" aria-label="Formatting tools">
+          <div className="mobile-format-panel-header">
+            <div>
+              <span>Formatting</span>
+              <strong>{activeTab[0].toUpperCase() + activeTab.slice(1)}</strong>
+            </div>
+            <button type="button" aria-label="Close formatting panel" onClick={() => setMobilePanelOpen(false)}>
+              <X size={18} />
+            </button>
+          </div>
+          <div className="mobile-format-grid">
+            <label className="mobile-format-color" title="Text color">
+              <span>Text color</span>
+              <input
+                type="color"
+                aria-label="Text color"
+                value={/^#[\da-f]{6}$/i.test(textStyle.color || '') ? textStyle.color : '#24233a'}
+                onChange={(event) => editor.chain().focus().setColor(event.target.value).run()}
+              />
+            </label>
+            <label className="mobile-format-color" title="Highlight color">
+              <span>Highlight</span>
+              <input
+                type="color"
+                aria-label="Highlight color"
+                value={/^#[\da-f]{6}$/i.test(highlightStyle.color || '') ? highlightStyle.color : '#fff0a8'}
+                onChange={(event) => editor.chain().focus().setHighlight({ color: event.target.value }).run()}
+              />
+            </label>
+            <ToolbarButton label="Strikethrough" active={editor.isActive('strike')} onClick={command(() => editor.chain().focus().toggleStrike())}><Strikethrough size={18} /></ToolbarButton>
+            <ToolbarButton label="Superscript" active={editor.isActive('superscript')} onClick={toggleSuperscript}><Superscript size={18} /></ToolbarButton>
+            <ToolbarButton label="Subscript" active={editor.isActive('subscript')} onClick={toggleSubscript}><Subscript size={18} /></ToolbarButton>
+            <ToolbarButton label="Format painter" className="toolbar-format-painter" active={Boolean(formatPainter)} disabled={!formatPainter && editor.state.selection.empty} onClick={startFormatPainter}><Paintbrush size={18} /></ToolbarButton>
+            <ToolbarButton label="Align left" active={editor.isActive({ textAlign: 'left' })} onClick={command(() => editor.chain().focus().setTextAlign('left'))}><AlignLeft size={18} /></ToolbarButton>
+            <ToolbarButton label="Align center" active={editor.isActive({ textAlign: 'center' })} onClick={command(() => editor.chain().focus().setTextAlign('center'))}><AlignCenter size={18} /></ToolbarButton>
+            <ToolbarButton label="Align right" active={editor.isActive({ textAlign: 'right' })} onClick={command(() => editor.chain().focus().setTextAlign('right'))}><AlignRight size={18} /></ToolbarButton>
+            <ToolbarButton label="Justify" active={editor.isActive({ textAlign: 'justify' })} onClick={command(() => editor.chain().focus().setTextAlign('justify'))}><AlignJustify size={18} /></ToolbarButton>
+            <ToolbarButton label="Insert link" active={editor.isActive('link')} onClick={() => { void addLink(); }}><LinkIcon size={18} /></ToolbarButton>
+            <ToolbarButton label="Find and replace" onClick={() => setFindReplaceOpen(true)}><Search size={18} /></ToolbarButton>
+            <ToolbarButton label="Clear formatting" onClick={clearFormatting}><Eraser size={18} /></ToolbarButton>
+            <ToolbarButton label="Horizontal line" onClick={command(() => editor.chain().focus().setHorizontalRule())}><Minus size={18} /></ToolbarButton>
+          </div>
+        </div>
+      )}
       <div className="toolbar-row toolbar-row-primary">
         <div className="toolbar-group toolbar-group-font toolbar-block-style" role="group" aria-label="Text style">
           <select

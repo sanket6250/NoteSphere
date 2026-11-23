@@ -9,6 +9,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.util.UUID;
 import java.util.Optional;
+import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -73,5 +74,33 @@ class AttachmentServiceTest {
     assertThrows(ResponseStatusException.class, () -> service.read(attachmentId));
 
     verify(repository, never()).findFileData(attachmentId);
+  }
+
+  @Test
+  void rejectsStoredBytesWhoseLengthDoesNotMatchMetadata() {
+    AttachmentRepository repository = mock(AttachmentRepository.class);
+    NoteRepository notes = mock(NoteRepository.class);
+    NamedParameterJdbcTemplate jdbc = mock(NamedParameterJdbcTemplate.class);
+    UUID attachmentId = UUID.randomUUID();
+    AttachmentRepository.AttachmentMetadataView metadata =
+      mock(AttachmentRepository.AttachmentMetadataView.class);
+    when(metadata.getId()).thenReturn(attachmentId);
+    when(metadata.getFileName()).thenReturn("file.pdf");
+    when(metadata.getOriginalFileName()).thenReturn("file.pdf");
+    when(metadata.getContentType()).thenReturn("application/pdf");
+    when(metadata.getFileSize()).thenReturn(2L);
+    when(metadata.getFileExtension()).thenReturn("pdf");
+    when(metadata.getCreatedAt()).thenReturn(Instant.now());
+    when(metadata.getUpdatedAt()).thenReturn(Instant.now());
+    when(repository.findLinkedMetadata(attachmentId)).thenReturn(Optional.of(metadata));
+    when(repository.findFileData(attachmentId)).thenReturn(Optional.of(new byte[]{1}));
+    AttachmentService service = new AttachmentService(repository, notes, jdbc, DataSize.ofMegabytes(1));
+
+    ResponseStatusException failure = assertThrows(
+      ResponseStatusException.class,
+      () -> service.read(attachmentId)
+    );
+
+    assertEquals(500, failure.getStatusCode().value());
   }
 }

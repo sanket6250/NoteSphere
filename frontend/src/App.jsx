@@ -51,6 +51,7 @@ import FolderDashboard from './FolderDashboard';
 import NoteImportDialog from './NoteImportDialog';
 import { getNoteTemplate, NOTE_TEMPLATES } from './noteTemplates';
 import { normalizeAttachmentUrls } from './attachmentUrls';
+import { downloadAttachment } from './attachmentDownload';
 import { PortalMenu, useDialogs, useManagedMenu } from './OverlaySystem';
 import AuthGate from './AuthGate';
 import { apiFetch } from './api';
@@ -311,6 +312,31 @@ function NotesphereApp({ onSignOut }) {
       if (id) markNoteChanged(id, { content: activeEditor.getHTML() });
     },
   });
+
+  useEffect(() => {
+    if (!editor) return undefined;
+
+    function handleAttachmentClick(event) {
+      if (!(event.target instanceof Element)) return;
+      const link = event.target.closest('a.attachment-link');
+      if (!link || !editor.view.dom.contains(link)) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      const fallbackName = new URL(link.href, window.location.href).searchParams.get('fileName')
+        || link.textContent?.trim().replace(/^📎\s*/, '').split(' · ')[0]
+        || 'attachment';
+      void downloadAttachment(link.href, fallbackName, apiFetch)
+        .then(() => setNotice({ tone: 'success', message: `${fallbackName} downloaded.` }))
+        .catch((error) => setNotice({
+          tone: 'error',
+          message: error.message || 'The attachment could not be downloaded.',
+        }));
+    }
+
+    editor.view.dom.addEventListener('click', handleAttachmentClick, true);
+    return () => editor.view.dom.removeEventListener('click', handleAttachmentClick, true);
+  }, [editor]);
 
   const current = notes.find((note) => note.id === activeId) || null;
   const activeFolder = folders.find((folder) => folder.id === viewFolderId) || null;
@@ -1455,7 +1481,7 @@ function NotesphereApp({ onSignOut }) {
                   }}
                 />
 
-                <div className="editor-page" style={{ zoom: `${editorZoom}%` , width: "100%", }}>
+                <div className="editor-page" style={{ zoom: `${editorZoom}%`, width: '100%' }}>
                   <EditorContent editor={editor} />
                 </div>
                 <div className="editor-bottom">

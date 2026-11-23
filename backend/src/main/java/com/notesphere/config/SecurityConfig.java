@@ -21,6 +21,8 @@ import org.springframework.http.HttpStatus;
 
 @Configuration
 public class SecurityConfig {
+  private static final int MIN_PASSWORD_LENGTH = 12;
+
   @Bean
   PasswordEncoder passwordEncoder() {
     return PasswordEncoderFactories.createDelegatingPasswordEncoder();
@@ -32,6 +34,12 @@ public class SecurityConfig {
     @Value("${app.auth.password}") String password,
     PasswordEncoder encoder
   ) {
+    if (username == null || username.isBlank() || !username.equals(username.trim()) || username.length() > 128) {
+      throw new IllegalStateException("APP_AUTH_USERNAME must be configured as a non-blank username of at most 128 characters.");
+    }
+    if (password == null || password.isBlank() || password.length() < MIN_PASSWORD_LENGTH) {
+      throw new IllegalStateException("APP_AUTH_PASSWORD must be configured and contain at least 12 characters.");
+    }
     return new InMemoryUserDetailsManager(
       User.withUsername(username).password(encoder.encode(password)).roles("USER").build()
     );
